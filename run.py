@@ -4,13 +4,16 @@ import os
 from dataset import MLSLTDataset
 
 
-def create_dataset(data_root: str, data_type: str):
+def create_dataset(data_root: str, data_type: str) -> MLSLTDataset:
     """Creates the dataset and its dataloaders
 
     Args:
         data_root: The root directory of the dataset containing
             the video directory and the json file.
         data_type: The type of the dataset. Can be either `train`, `dev`, or `test`.
+
+    Returns:
+        The MLSLTDataset
     """
     dataset = MLSLTDataset(
         os.path.join(data_root, data_type), os.path.join(data_root, f'{data_type}.json')
