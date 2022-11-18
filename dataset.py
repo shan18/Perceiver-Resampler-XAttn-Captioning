@@ -43,6 +43,8 @@ class MLSLTDataset(Dataset):
         video, _, _ = read_video(video_path, output_format='TCHW', pts_unit='sec')
         video = self.image_processor(images=[x for x in video], return_tensors='pt')['pixel_values']
 
+        # TODO: tokenize text and convert to tensor
+
         return video, transcript
 
     def get_dataloader(self, batch_size, shuffle=True, num_workers=1):
