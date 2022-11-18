@@ -9,3 +9,4 @@ data/dev/
 data/test/
 *.mp4
 *.json
+shell.py

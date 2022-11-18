@@ -44,3 +44,7 @@ class MLSLTDataset(Dataset):
         video = self.image_processor(images=[x for x in video], return_tensors='pt')['pixel_values']
 
         return video, transcript
+
+    def get_dataloader(self, batch_size, shuffle=True, num_workers=1):
+        # FIXME: Need to do padding in timesteps
+        return DataLoader(self, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
