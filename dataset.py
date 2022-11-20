@@ -5,6 +5,7 @@ This script contains the Dataset class and the fuctions to create its dataloader
 import json
 import os
 
+import torch
 from torch.utils.data import DataLoader, Dataset
 from torchvision.io import read_video
 from transformers import CLIPProcessor
@@ -47,6 +48,25 @@ class MLSLTDataset(Dataset):
 
         return video, transcript
 
+    def _collate_pad(self, batch_samples):
+        pad_video, pad_transcript = [], []
+        max_video_len = len(max(batch_samples, key=lambda x: len(x[0]))[0])
+        for video, transcript in batch_samples:
+            # Pad video frames
+            if len(video) < max_video_len:
+                video = torch.cat([video, torch.zeros(max_video_len - len(video), *video.shape[1:])], dim=0)
+            pad_video.append(video)
+
+            # Pad transcripts
+            pad_transcript.append(transcript)
+
+        return torch.stack(pad_video), pad_transcript
+
     def get_dataloader(self, batch_size, shuffle=True, num_workers=1):
-        # FIXME: Need to do padding in timesteps
-        return DataLoader(self, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
+        return DataLoader(
+            self,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            num_workers=num_workers,
+            collate_fn=self._collate_pad,
+        )
