@@ -32,8 +32,10 @@ class MLSLTModel(nn.Module):
         # Get embeddings for each frame in the video
         video_embeddings = self._encode_video_frames(video)
 
+        # TODO: Add positional encoding to video embeddings
+
         # TODO: Get unified video embeddings
 
         # TODO: Generate output text
 
-        return video_embeddings
+        return video_embeddings, transcript

@@ -2,6 +2,7 @@ import argparse
 import os
 
 from dataset import MLSLTDataset
+from engine import Trainer
 from model import MLSLTModel
 
 
@@ -46,4 +47,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers', type=int, default=8, help='Number of workers')
     parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning rate')
     parser.add_argument('--epochs', type=int, default=10, help='Number of epochs')
+    parser.add_argument('--checkpoint_dir', default=os.path.join(BASE_DIR, 'checkpoints'), help='Checkpoint directory')
     args = parser.parse_args()
+
+    main(args)
