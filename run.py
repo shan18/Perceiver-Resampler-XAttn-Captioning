@@ -43,14 +43,9 @@ def main(args):
     model = VideoTextModel().to(device)
     summary(model)
 
-    # Create optimizer and criterion
-    print('Setting up optimizer and criterion...')
-    optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
-    criterion = nn.CrossEntropyLoss()
-
     # Create trainer
     print('Creating trainer...')
-    trainer = Trainer(model, optimizer, criterion, args.checkpoint_dir, device=device)
+    trainer = Trainer(model, args.checkpoint_dir, args.learning_rate, device=device)
 
     # Train
     print('Training...')

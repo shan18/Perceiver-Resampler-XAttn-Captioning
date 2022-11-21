@@ -2,16 +2,18 @@ import os
 
 import torch
 from einops import rearrange
+from torch import nn
+from torch.optim import AdamW
 
 from utils import ProgressBar
 
 
 class Trainer:
 
-    def __init__(self, model, optimizer, criterion, checkpoint_dir, device='cpu'):
+    def __init__(self, model: nn.Module, checkpoint_dir: str, learning_rate: float, device: str = 'cpu'):
         self.model = model.to(device)
-        self.optimizer = optimizer
-        self.criterion = criterion
+        self.optimizer = AdamW(self.model.parameters(), lr=learning_rate)
+        self.criterion = nn.CrossEntropyLoss()
         self.checkpoint_dir = checkpoint_dir
         self.device = device
 
