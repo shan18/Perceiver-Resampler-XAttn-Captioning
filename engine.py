@@ -4,18 +4,29 @@ import torch
 from einops import rearrange
 from torch import nn
 from torch.optim import AdamW
+from transformers import get_cosine_schedule_with_warmup
 
 from utils import ProgressBar
 
 
 class Trainer:
 
-    def __init__(self, model: nn.Module, checkpoint_dir: str, learning_rate: float, device: str = 'cpu'):
+    def __init__(self, model: nn.Module, checkpoint_dir: str, device: str = 'cpu'):
         self.model = model.to(device)
-        self.optimizer = AdamW(self.model.parameters(), lr=learning_rate)
-        self.criterion = nn.CrossEntropyLoss()
         self.checkpoint_dir = checkpoint_dir
         self.device = device
+
+    def _prepare_for_training(self, num_steps_per_epoch, epochs):
+        self.criterion = nn.CrossEntropyLoss()
+
+        self.optimizer = AdamW(self.model.parameters(), lr=0.001)
+
+        total_steps = num_steps_per_epoch * epochs
+        self.scheduler = get_cosine_schedule_with_warmup(
+            self.optimizer,
+            num_warmup_steps=total_steps // 10,  # 10% of the total number of steps
+            num_training_steps=total_steps,
+        )
 
     def train(self, loader):
         self.model.train()
@@ -34,6 +45,7 @@ class Trainer:
 
             loss.backward()
             self.optimizer.step()
+            self.scheduler.step()
 
             # Update progress bar
             pbar.update(batch_idx, values=[('Loss', round(loss.item(), 4))])
@@ -68,6 +80,7 @@ class Trainer:
         return eval_loss
 
     def fit(self, train_loader, dev_loader, epochs):
+        self._prepare_for_training(len(train_loader), epochs)
         best_eval_loss = float('inf')
         for epoch in range(epochs):
             print(f'\nEpoch {epoch + 1}:')
