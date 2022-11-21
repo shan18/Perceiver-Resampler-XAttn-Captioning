@@ -7,3 +7,5 @@ av
 tqdm
 einops
 einops_exts
+black
+isort
