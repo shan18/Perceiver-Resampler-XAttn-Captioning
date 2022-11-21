@@ -1,5 +1,4 @@
 import argparse
-import logging
 import os
 
 import torch
@@ -35,26 +34,26 @@ def main(args):
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     # Create dataloaders
-    logging.info('Creating dataloaders...')
+    print('Creating dataloaders...')
     _, train_loader = create_dataset(args.data_root, 'train', args.batch_size, args.num_workers)
     _, dev_loader = create_dataset(args.data_root, 'dev', args.batch_size, args.num_workers)
 
     # Create model
-    logging.info('Creating model...')
+    print('Creating model...')
     model = VideoTextModel().to(device)
     summary(model)
 
     # Create optimizer and criterion
-    logging.info('Setting up optimizer and criterion...')
+    print('Setting up optimizer and criterion...')
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.learning_rate)
     criterion = nn.CrossEntropyLoss()
 
     # Create trainer
-    logging.info('Creating trainer...')
+    print('Creating trainer...')
     trainer = Trainer(model, optimizer, criterion, args.checkpoint_dir, device=device)
 
     # Train
-    logging.info('Training...')
+    print('Training...')
     trainer.fit(train_loader, dev_loader, args.epochs)
 
 

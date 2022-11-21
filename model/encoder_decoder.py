@@ -1,6 +1,6 @@
 from einops import rearrange
 from torch import nn
-from transformers import CLIPVisionModel, GPT2LMHeadModel
+from transformers import CLIPVisionModel, GPT2LMHeadModel, logging
 
 from .resampler import PerceiverResampler
 
@@ -9,7 +9,12 @@ class VisionEncoder(nn.Module):
 
     def __init__(self):
         super().__init__()
+
+        # This disables the logging temporarily
+        logging.set_verbosity_error()
         self.video_encoder = CLIPVisionModel.from_pretrained('openai/clip-vit-base-patch32')
+        logging.set_verbosity_warning()
+
         self.resampler = PerceiverResampler(
             dim=768,
             depth=6,

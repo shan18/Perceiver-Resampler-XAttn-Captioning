@@ -17,11 +17,11 @@ class Trainer:
     def train(self, loader):
         self.model.train()
         pbar = ProgressBar(target=len(loader), width=8)
-        for batch_idx, (video, transcript) in enumerate(loader, 0):
+        for batch_idx, (video, transcript) in enumerate(loader):
             video, transcript = video.to(self.device), transcript.to(self.device)
 
             self.optimizer.zero_grad()
-            outputs = self.model(video, transcript)
+            outputs = self.model(video)
 
             # Compute the loss
             loss = self.criterion(outputs, transcript)
@@ -39,7 +39,7 @@ class Trainer:
     def fit(self, train_loader, dev_loader, epochs):
         best_eval_loss = float('inf')
         for epoch in range(epochs):
-            print(f'\nEpoch {epoch + 1}/{epochs}:')
+            print(f'\nEpoch {epoch + 1}:')
             self.train(train_loader)
 
             eval_loss = self.evaluate(dev_loader)
@@ -54,7 +54,7 @@ class Trainer:
         with torch.no_grad():
             for video, transcript in loader:
                 video, transcript = video.to(self.device), transcript.to(self.device)
-                outputs = self.model(video, transcript)
+                outputs = self.model(video)
                 loss = self.criterion(outputs, transcript)
                 eval_loss += loss.item()
 
