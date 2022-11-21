@@ -68,7 +68,9 @@ class VideoTextModel(nn.Module):
         for param in self.text_generator.lm_head.parameters():
             param.requires_grad = True
 
-    def forward(self, video):
+    def forward(self, video, text_attention_mask):
         video_embeddings = self.vision_encoder(video)
-        text_output = self.text_generator(inputs_embeds=video_embeddings).logits
+        text_output = self.text_generator(
+            inputs_embeds=video_embeddings, attention_mask=text_attention_mask
+        ).logits
         return text_output

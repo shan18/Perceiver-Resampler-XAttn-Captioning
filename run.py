@@ -65,8 +65,8 @@ if __name__ == '__main__':
         default=os.path.join(BASE_DIR, 'data'),
         help='Path containing the train, dev and test dataset',
     )
-    parser.add_argument('--batch_size', type=int, default=32, help='Batch size')
-    parser.add_argument('--num_workers', type=int, default=8, help='Number of workers')
+    parser.add_argument('--batch_size', type=int, default=16, help='Batch size')
+    parser.add_argument('--num_workers', type=int, default=4, help='Number of workers')
     parser.add_argument('--learning_rate', type=float, default=1e-3, help='Learning rate')
     parser.add_argument('--epochs', type=int, default=10, help='Number of epochs')
     parser.add_argument('--checkpoint_dir', default=os.path.join(BASE_DIR, 'checkpoints'), help='Checkpoint directory')

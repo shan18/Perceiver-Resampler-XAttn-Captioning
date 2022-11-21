@@ -49,15 +49,20 @@ class MLSLTDataset(Dataset):
         video = self.image_processor(images=[x for x in video], return_tensors='pt')['pixel_values']
 
         # Process text
-        transcript = self.tokenizer(transcript, return_tensors='pt')['input_ids'].squeeze(0)
+        transcript = self.tokenizer(
+            f'{self.tokenizer.bos_token} {transcript} {self.tokenizer.eos_token}',
+            return_tensors='pt',
+            max_length=64,  # TODO: Assign this via paramters
+            truncation=True,
+            padding='max_length',
+        )
 
-        return video, transcript
+        return video, transcript['input_ids'].squeeze(0), transcript['attention_mask'].squeeze(0)
 
     def _collate_pad(self, batch_samples):
-        pad_video, pad_transcript = [], []
+        pad_video, pad_transcript, pad_attention_mask = [], [], []
         max_video_len = len(max(batch_samples, key=lambda x: len(x[0]))[0])
-        max_transcript_len = len(max(batch_samples, key=lambda x: len(x[1]))[1])
-        for video, transcript in batch_samples:
+        for video, transcript, attention_mask in batch_samples:
             # Pad video frames
             if len(video) < max_video_len:
                 video = torch.cat(
@@ -66,17 +71,10 @@ class MLSLTDataset(Dataset):
                 )
             pad_video.append(video)
 
-            # Pad transcripts
-            if len(transcript) < max_transcript_len:
-                transcript = torch.cat(
-                    [transcript, torch.full(
-                        (max_transcript_len - len(transcript),), self.tokenizer.pad_token_id, dtype=transcript.dtype
-                    )],
-                    dim=0
-                )
             pad_transcript.append(transcript)
+            pad_attention_mask.append(attention_mask)
 
-        return torch.stack(pad_video), torch.stack(pad_transcript)
+        return torch.stack(pad_video), torch.stack(pad_transcript), torch.stack(pad_attention_mask)
 
     def get_dataloader(self, batch_size, shuffle=True, num_workers=1):
         return DataLoader(
