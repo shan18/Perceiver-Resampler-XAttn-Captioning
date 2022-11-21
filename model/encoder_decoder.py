@@ -1,11 +1,9 @@
-import torch
 from einops import rearrange
 from torch import nn
 from transformers import CLIPVisionModel, GPT2LMHeadModel
 
 from .resampler import PerceiverResampler
 
-# TODO: Freeze image and text pre-trained models
 
 class VisionEncoder(nn.Module):
 

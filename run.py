@@ -1,6 +1,10 @@
 import argparse
 import os
 
+import torch
+from torch import nn
+from torchinfo import summary
+
 from dataset import MLSLTDataset
 from engine import Trainer
 from model import VideoTextModel
@@ -27,12 +31,25 @@ def create_dataset(data_root: str, data_type: str, batch_size: int, num_workers:
 
 
 def main(args):
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
     # Create dataloaders
     _, train_loader = create_dataset(args.data_root, 'train', args.batch_size, args.num_workers)
     _, dev_loader = create_dataset(args.data_root, 'dev', args.batch_size, args.num_workers)
 
     # Create model
-    model = VideoTextModel()
+    model = VideoTextModel().to(device)
+    summary(model)
+
+    # Create optimizer and criterion
+    optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr)
+    criterion = nn.CrossEntropyLoss()
+
+    # Create trainer
+    trainer = Trainer(model, optimizer, criterion, args.checkpoint_dir, device=device)
+
+    # Train
+    trainer.fit(train_loader, dev_loader, args.epochs)
 
 
 if __name__ == '__main__':
@@ -49,5 +66,8 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=10, help='Number of epochs')
     parser.add_argument('--checkpoint_dir', default=os.path.join(BASE_DIR, 'checkpoints'), help='Checkpoint directory')
     args = parser.parse_args()
+
+    if not os.path.exists(args.checkpoint_dir):
+        os.makedirs(args.checkpoint_dir, exist_ok=True)
 
     main(args)
