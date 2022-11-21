@@ -1,10 +1,11 @@
 import torch
 from einops import rearrange
 from torch import nn
-from transformers import CLIPVisionModel
+from transformers import CLIPVisionModel, GPT2LMHeadModel
 
 from .resampler import PerceiverResampler
 
+# TODO: Freeze image and text pre-trained models
 
 class VisionEncoder(nn.Module):
 
@@ -21,6 +22,10 @@ class VisionEncoder(nn.Module):
             ff_mult=4,
             activation='gelu',
         )
+
+    def _freeze_params(self):
+        for param in self.video_encoder.parameters():
+            param.requires_grad = False
 
     def forward(self, video):
         """
@@ -39,3 +44,28 @@ class VisionEncoder(nn.Module):
 
         # Pass the video embeddings through the perceiver resampler
         return self.resampler(embeddings)
+
+
+class VideoTextModel(nn.Module):
+
+    def __init__(self):
+        super().__init__()
+        self.vision_encoder = VisionEncoder()
+        self.text_generator = GPT2LMHeadModel.from_pretrained('gpt2')
+        self._freeze_params()
+
+    def _freeze_params(self):
+        self.vision_encoder._freeze_params()
+
+        # Freeze text generator
+        for param in self.text_generator.parameters():
+            param.requires_grad = False
+
+        # Unfreeze the lm head
+        for param in self.text_generator.lm_head.parameters():
+            param.requires_grad = True
+
+    def forward(self, video):
+        video_embeddings = self.vision_encoder(video)
+        text_output = self.text_generator(inputs_embeds=video_embeddings).logits
+        return text_output
