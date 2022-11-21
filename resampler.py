@@ -1,0 +1,179 @@
+# This code is referenced from https://github.com/dhansmair/flamingo-mini
+
+import torch
+from einops import rearrange, repeat
+from einops_exts import rearrange_many
+from torch import einsum, nn
+
+
+class SquaredReLU(nn.Module):
+    """Squared ReLU activation function"""
+    def __init__(self):
+        super().__init__()
+
+    def forward(self, x):
+        return torch.pow(torch.relu(x), 2)
+
+
+class PerceiverAttentionLayer(nn.Module):
+    def __init__(
+        self,
+        dim,
+        dim_head=64,
+        heads=8
+    ):
+        super().__init__()
+        self.scale = dim_head ** -0.5
+        self.heads = heads
+        self.dim_head = dim_head
+        inner_dim = dim_head * heads
+
+        # trainable components of PerceiverAttentionLayer
+        self.norm_media = nn.LayerNorm(dim)
+        self.norm_latents = nn.LayerNorm(dim)
+
+        self.to_q = nn.Linear(dim, inner_dim, bias=False)
+        self.to_k = nn.Linear(dim, inner_dim, bias=False)
+        self.to_v = nn.Linear(dim, inner_dim, bias=False)
+        self.to_out = nn.Linear(inner_dim, dim, bias=False)
+
+    def forward(self, features, latents):
+        """Latent vectors are cross-attending to the visual features x
+
+        Args:
+            features: Batch of visual features with shape (batch_size, n_features, dim)
+            latents: Latent learnt vectors which are used to compute queries with shape (batch_size, n_latents, dim)
+
+        Returns:
+            Attention score with shape (batch_size, n_latents, dim)
+        """
+        assert features.ndim == 3
+        assert latents.ndim == 3
+        assert features.shape[0] == latents.shape[0]
+        assert features.shape[2] == latents.shape[2]
+
+        n_heads = self.heads
+        n_batch, n_features, dim = features.shape
+        n_queries = latents.shape[1]
+
+        # Layer normalization
+        x = self.norm_media(features)
+        latents = self.norm_latents(latents)
+
+        # Compute the queries from the latents, for all attention heads simultaneously
+        q = self.to_q(latents)
+        q = rearrange(q, 'b q (h d) -> b h q d', h=n_heads)
+        assert q.shape == torch.Size([n_batch, n_heads, n_queries, self.dim_head])
+
+        # Keys and values for all attention heads
+        kv_input = torch.cat((x, latents), dim=-2)
+        n_features_latents = n_features + n_queries
+        k = self.to_k(kv_input)
+        v = self.to_v(kv_input)
+
+        k, v = rearrange_many((k, v), 'b f (h d) -> b h f d', h=n_heads)
+        assert v.shape == torch.Size([n_batch, n_heads, n_features_latents, self.dim_head])
+
+        q = q * self.scale
+
+        # Attention scores
+        sim = einsum('b h q d, b h f d -> b h q f', q, k)
+        sim = sim - sim.amax(dim=-1, keepdim=True).detach()
+        alphas = sim.softmax(dim=-1)
+
+        out = einsum('b h q f, b h f v -> b h q v', alphas, v)
+        out = rearrange(out, 'b h q v -> b q (h v)')
+
+        return self.to_out(out)
+
+
+class PerceiverResampler(nn.Module):
+    def __init__(
+        self,
+        dim,
+        depth,
+        dim_head=64,
+        heads=8,
+        num_latents=64,
+        num_time_embeds=4,
+        ff_mult=4,
+        act='gelu'
+    ):
+        super().__init__()
+
+        self.dim = dim
+        self.n_queries = num_latents
+
+        self.latents = nn.Parameter(torch.randn(num_latents, dim))
+
+        self.time_pos_emb = nn.Parameter(torch.randn(num_time_embeds, 1, dim))
+
+        self.layers = nn.ModuleList([])
+        for _ in range(depth):
+            self.layers.append(nn.ModuleList([
+                PerceiverAttentionLayer(dim=dim, dim_head=dim_head, heads=heads),
+                self.FeedForward(dim=dim, mult=ff_mult, act=act)
+            ]))
+
+        # Layer normalization takes as input the query vector length
+        self.norm = nn.LayerNorm(dim)
+
+    def FeedForward(self, dim, mult=4, act='gelu'):
+        """
+        Apply feed forward layer with given activation function
+        """
+        acts = dict(
+            gelu=nn.GELU,
+            sqrelu=SquaredReLU,
+            relu=nn.ReLU
+        )
+        assert act in acts, f"act. can only be one of {acts.keys()}"
+
+        inner_dim = int(dim * mult)
+        return nn.Sequential(
+            nn.LayerNorm(dim),
+            nn.Linear(dim, inner_dim, bias=False),
+            acts[act](),
+            nn.Linear(inner_dim, dim, bias=False)
+        )
+
+    def forward(self, x_f):
+        """Run perceiver resampler on the input visual embeddings
+
+        Args:
+            x_f: Input visual embeddings of shape (batch_size, n_features, d_visual)
+                or (batch_size, n_frames, n_features, d_visual)
+        Returns:
+            Input features of shape (batch_size, T, n_queries, d_visual)
+        """
+        if x_f.ndim == 3:
+            # Extend the dimension when input is an image
+            x_f = rearrange(x_f, 'b n d -> b 1 n d')
+
+        assert x_f.ndim == 4
+
+        n_batches = x_f.shape[0]
+        n_frames = x_f.shape[1]
+        n_visual_features = x_f.shape[2]
+        dim = x_f.shape[3]
+
+        assert dim == self.dim
+
+        # Add time embeddings to every visual feature of a frame
+        x_f = x_f + self.time_pos_emb[:n_frames]
+
+        # Flatten the frames
+        x_f = rearrange(x_f, 'b T n d -> b (T n) d')
+
+        # Copy the latents for every element in the batch
+        x = repeat(self.latents, 'q d -> b q d', b=n_batches)
+
+        # Apply attention and feed forward layer
+        for attn, ffw in self.layers:
+            x = x + attn(x_f, x)
+            x = x + ffw(x)
+
+        assert x.shape == torch.Size([n_batches, self.n_queries, self.dim])
+
+        norm = self.norm(x)
+        return norm
