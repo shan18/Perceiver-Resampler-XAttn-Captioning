@@ -16,12 +16,7 @@ class SquaredReLU(nn.Module):
 
 
 class PerceiverAttentionLayer(nn.Module):
-    def __init__(
-        self,
-        dim,
-        dim_head=64,
-        heads=8
-    ):
+    def __init__(self, dim: int, dim_head: int = 64, heads: int = 8):
         super().__init__()
         self.scale = dim_head ** -0.5
         self.heads = heads
@@ -90,19 +85,19 @@ class PerceiverAttentionLayer(nn.Module):
 class PerceiverResampler(nn.Module):
     def __init__(
         self,
-        dim,
-        depth,
-        dim_head=64,
-        heads=8,
-        num_latents=64,
-        num_time_embeds=4,
-        ff_mult=4,
-        act='gelu'
+        dim: int,
+        depth: int,
+        dim_head: int = 64,
+        heads: int = 8,
+        num_latents: int = 64,
+        num_time_embeds: int = 4,
+        ff_mult: int = 4,
+        activation: str = 'gelu',
     ):
         super().__init__()
 
         self.dim = dim
-        self.n_queries = num_latents
+        self.num_queries = num_latents
 
         self.latents = nn.Parameter(torch.randn(num_latents, dim))
 
@@ -112,28 +107,26 @@ class PerceiverResampler(nn.Module):
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
                 PerceiverAttentionLayer(dim=dim, dim_head=dim_head, heads=heads),
-                self.FeedForward(dim=dim, mult=ff_mult, act=act)
+                self.feed_forward_layer(dim=dim, mult=ff_mult, activation=activation)
             ]))
 
         # Layer normalization takes as input the query vector length
         self.norm = nn.LayerNorm(dim)
 
-    def FeedForward(self, dim, mult=4, act='gelu'):
-        """
-        Apply feed forward layer with given activation function
-        """
-        acts = dict(
+    def feed_forward_layer(self, dim: int, mult: int = 4, activation: str = 'gelu'):
+        """Feed forward layer with given activation function"""
+        activations = dict(
             gelu=nn.GELU,
             sqrelu=SquaredReLU,
             relu=nn.ReLU
         )
-        assert act in acts, f"act. can only be one of {acts.keys()}"
+        assert activation in activations, f'activation can only be one of {activations.keys()}'
 
         inner_dim = int(dim * mult)
         return nn.Sequential(
             nn.LayerNorm(dim),
             nn.Linear(dim, inner_dim, bias=False),
-            acts[act](),
+            activations[activation](),
             nn.Linear(inner_dim, dim, bias=False)
         )
 
@@ -143,37 +136,33 @@ class PerceiverResampler(nn.Module):
         Args:
             x_f: Input visual embeddings of shape (batch_size, n_features, d_visual)
                 or (batch_size, n_frames, n_features, d_visual)
-        Returns:
-            Input features of shape (batch_size, T, n_queries, d_visual)
-        """
-        if x_f.ndim == 3:
-            # Extend the dimension when input is an image
-            x_f = rearrange(x_f, 'b n d -> b 1 n d')
 
+        Returns:
+            Input features of shape (batch_size, T, num_queries, d_visual)
+        """
         assert x_f.ndim == 4
 
-        n_batches = x_f.shape[0]
-        n_frames = x_f.shape[1]
-        n_visual_features = x_f.shape[2]
+        batch_size = x_f.shape[0]
+        timesteps = x_f.shape[1]
         dim = x_f.shape[3]
 
         assert dim == self.dim
 
         # Add time embeddings to every visual feature of a frame
-        x_f = x_f + self.time_pos_emb[:n_frames]
+        x_f = x_f + self.time_pos_emb[:timesteps]
 
         # Flatten the frames
         x_f = rearrange(x_f, 'b T n d -> b (T n) d')
 
         # Copy the latents for every element in the batch
-        x = repeat(self.latents, 'q d -> b q d', b=n_batches)
+        x = repeat(self.latents, 'q d -> b q d', b=batch_size)
 
         # Apply attention and feed forward layer
         for attn, ffw in self.layers:
             x = x + attn(x_f, x)
             x = x + ffw(x)
 
-        assert x.shape == torch.Size([n_batches, self.n_queries, self.dim])
+        assert x.shape == torch.Size([batch_size, self.num_queries, self.dim])
 
         norm = self.norm(x)
         return norm

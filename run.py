@@ -3,7 +3,7 @@ import os
 
 from dataset import MLSLTDataset
 from engine import Trainer
-from model import MLSLTModel
+from model.encoder import VisionEncoder
 
 
 def create_dataset(data_root: str, data_type: str, batch_size: int, num_workers: int):
@@ -32,7 +32,7 @@ def main(args):
     _, dev_loader = create_dataset(args.data_root, 'dev', args.batch_size, args.num_workers)
 
     # Create model
-    model = MLSLTModel()
+    model = VisionEncoder()
 
 
 if __name__ == '__main__':
