@@ -8,7 +8,7 @@ import os
 import torch
 from torch.utils.data import DataLoader, Dataset
 from torchvision.io import read_video
-from transformers import CLIPProcessor
+from transformers import CLIPProcessor, GPT2Tokenizer
 
 
 class MLSLTDataset(Dataset):
@@ -22,6 +22,9 @@ class MLSLTDataset(Dataset):
         self._get_labels(json_path)
 
         self.image_processor = CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')
+
+        self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+        self.tokenizer.pad_token = self.tokenizer.eos_token
 
     def _get_labels(self, json_path):
         """Reads the json file and creates a label dictionary"""
@@ -41,26 +44,37 @@ class MLSLTDataset(Dataset):
         transcript = self.json_data[index]['transcript']['en']
         video_path = os.path.join(self.video_root, str(sample_id), 'en.mp4')
 
+        # Process video
         video, _, _ = read_video(video_path, output_format='TCHW', pts_unit='sec')
         video = self.image_processor(images=[x for x in video], return_tensors='pt')['pixel_values']
 
-        # TODO: tokenize text and convert to tensor
+        # Process text
+        transcript = self.tokenizer(
+            f'{self.tokenizer.bos_token} {transcript} {self.tokenizer.eos_token}',
+            return_tensors='pt',
+            max_length=64,  # TODO: Assign this via paramters
+            truncation=True,
+            padding='max_length',
+        )
 
-        return video, transcript
+        return video, transcript['input_ids'].squeeze(0), transcript['attention_mask'].squeeze(0)
 
     def _collate_pad(self, batch_samples):
-        pad_video, pad_transcript = [], []
+        pad_video, pad_transcript, pad_attention_mask = [], [], []
         max_video_len = len(max(batch_samples, key=lambda x: len(x[0]))[0])
-        for video, transcript in batch_samples:
+        for video, transcript, attention_mask in batch_samples:
             # Pad video frames
             if len(video) < max_video_len:
-                video = torch.cat([video, torch.zeros(max_video_len - len(video), *video.shape[1:])], dim=0)
+                video = torch.cat(
+                    [video, torch.zeros(max_video_len - len(video), *video.shape[1:], dtype=video.dtype)],
+                    dim=0
+                )
             pad_video.append(video)
 
-            # Pad transcripts
             pad_transcript.append(transcript)
+            pad_attention_mask.append(attention_mask)
 
-        return torch.stack(pad_video), pad_transcript
+        return torch.stack(pad_video), torch.stack(pad_transcript), torch.stack(pad_attention_mask)
 
     def get_dataloader(self, batch_size, shuffle=True, num_workers=1):
         return DataLoader(
