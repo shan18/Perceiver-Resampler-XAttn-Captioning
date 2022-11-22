@@ -14,6 +14,7 @@ class Trainer:
     def __init__(self, model: nn.Module, checkpoint_dir: str, device: str = 'cpu'):
         self.model = model.to(device)
         self.checkpoint_dir = checkpoint_dir
+        self.recent_checkpoints = []
         self.device = device
 
     def _prepare_for_training(self, num_steps_per_epoch, epochs):
@@ -93,4 +94,8 @@ class Trainer:
                 self.save_checkpoint(epoch, eval_loss)
 
     def save_checkpoint(self, epoch, loss):
-        torch.save(self.model.state_dict(), os.path.join(self.checkpoint_dir, f'ckpt_ep{epoch}_loss{loss}.pt'))
+        self.recent_checkpoints.append(os.path.join(self.checkpoint_dir, f'ckpt-ep_{epoch}-loss_{loss:.4f}.pt'))
+        if len(self.recent_checkpoints) > 5:  # TODO: Assign the top k with a parameter
+            oldest_ckpt_file = self.recent_checkpoints.pop(0)
+            os.remove(oldest_ckpt_file)
+        torch.save(self.model.state_dict(), self.recent_checkpoints[-1])
