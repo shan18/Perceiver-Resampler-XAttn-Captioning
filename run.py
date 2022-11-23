@@ -34,7 +34,7 @@ def create_dataset(data_root: str, data_type: str, batch_size: int, num_workers:
 
 
 def main(args):
-    conf = OmegaConf.load('config.yaml')
+    config = OmegaConf.load(args.config)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
     # Create dataloaders
     print('Creating dataloaders...')
@@ -43,7 +43,7 @@ def main(args):
 
     # Create model
     print('Creating model...')
-    model = VideoTextModel(conf, args.resampler).to(device)
+    model = VideoTextModel(config).to(device)
     summary(model)
 
     # Create trainer
@@ -67,7 +67,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers', type=int, default=4, help='Number of workers')
     parser.add_argument('--epochs', type=int, default=10, help='Number of epochs')
     parser.add_argument('--checkpoint_dir', default=os.path.join(BASE_DIR, 'checkpoints'), help='Checkpoint directory')
-    parser.add_argument('--resampler', default="default", help='Resampler option')
+    parser.add_argument('--config', default=os.path.join(BASE_DIR, 'config.yaml'), help='Config path')
     args = parser.parse_args()
 
     if not os.path.exists(args.checkpoint_dir):

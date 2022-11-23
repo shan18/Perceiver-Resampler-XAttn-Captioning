@@ -1,11 +1,5 @@
 resampler:
-    default:
-        depth: 6
-        dim_head: 64
-        heads: 8
-        num_latents: 64
-    shallow:
-        depth: 3
-        dim_head: 16
-        heads: 8
-        num_latents: 64
+    depth: 6
+    dim_head: 64
+    heads: 8
+    num_latents: 64
