@@ -7,20 +7,20 @@ from .resampler import PerceiverResampler
 
 class VisionEncoder(nn.Module):
 
-    def __init__(self, conf, resampler_option):
+    def __init__(self, config):
         super().__init__()
 
         # This disables the logging temporarily
         logging.set_verbosity_error()
         self.video_encoder = CLIPVisionModel.from_pretrained('openai/clip-vit-base-patch32')
         logging.set_verbosity_warning()
-        resampler_conf = conf.resampler[resampler_option]    
+        resampler_config   = config.resampler
         self.resampler = PerceiverResampler(
             dim=768,
-            depth=resampler_conf.depth,
-            dim_head=resampler_conf.dim_head,
-            heads=resampler_conf.heads,
-            num_latents=resampler_conf.num_latents,
+            depth=resampler_config.depth,
+            dim_head=resampler_config.dim_head,
+            heads=resampler_config.heads,
+            num_latents=resampler_config.num_latents,
             num_time_embeds=500,  # TODO: Need to give dynamic value based on number of frames.
             ff_mult=4,
             activation='gelu',
@@ -51,9 +51,9 @@ class VisionEncoder(nn.Module):
 
 class VideoTextModel(nn.Module):
 
-    def __init__(self, conf, resampler_option):
+    def __init__(self, config):
         super().__init__()
-        self.vision_encoder = VisionEncoder(conf, resampler_option)
+        self.vision_encoder = VisionEncoder(config)
         self.text_generator = GPT2LMHeadModel.from_pretrained('gpt2')
         self._freeze_params()
 
