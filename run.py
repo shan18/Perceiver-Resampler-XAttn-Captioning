@@ -8,6 +8,8 @@ from torchinfo import summary
 from dataset import MLSLTDataset
 from engine import Trainer
 from model import VideoTextModel
+from omegaconf import OmegaConf
+
 
 
 def create_dataset(data_root: str, data_type: str, batch_size: int, num_workers: int):
@@ -23,6 +25,7 @@ def create_dataset(data_root: str, data_type: str, batch_size: int, num_workers:
     Returns:
         The MLSLTDataset dataloader and the dataset object
     """
+    print(f'Loading dataset from {data_root}/{data_type} and {data_root}/{data_type}.json')
     dataset = MLSLTDataset(
         os.path.join(data_root, data_type), os.path.join(data_root, f'{data_type}.json')
     )
@@ -31,8 +34,8 @@ def create_dataset(data_root: str, data_type: str, batch_size: int, num_workers:
 
 
 def main(args):
+    config = OmegaConf.load(args.config)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
     # Create dataloaders
     print('Creating dataloaders...')
     _, train_loader = create_dataset(args.data_root, 'train', args.batch_size, args.num_workers)
@@ -40,7 +43,7 @@ def main(args):
 
     # Create model
     print('Creating model...')
-    model = VideoTextModel().to(device)
+    model = VideoTextModel(config).to(device)
     summary(model)
 
     # Create trainer
@@ -64,6 +67,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers', type=int, default=4, help='Number of workers')
     parser.add_argument('--epochs', type=int, default=10, help='Number of epochs')
     parser.add_argument('--checkpoint_dir', default=os.path.join(BASE_DIR, 'checkpoints'), help='Checkpoint directory')
+    parser.add_argument('--config', default=os.path.join(BASE_DIR, 'config.yaml'), help='Config path')
     args = parser.parse_args()
 
     if not os.path.exists(args.checkpoint_dir):

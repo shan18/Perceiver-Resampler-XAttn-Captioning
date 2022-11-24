@@ -7,20 +7,20 @@ from .resampler import PerceiverResampler
 
 class VisionEncoder(nn.Module):
 
-    def __init__(self):
+    def __init__(self, config):
         super().__init__()
 
         # This disables the logging temporarily
         logging.set_verbosity_error()
         self.video_encoder = CLIPVisionModel.from_pretrained('openai/clip-vit-base-patch32')
         logging.set_verbosity_warning()
-
+        resampler_config   = config.resampler
         self.resampler = PerceiverResampler(
             dim=768,
-            depth=6,
-            dim_head=64,
-            heads=8,
-            num_latents=64,
+            depth=resampler_config.depth,
+            dim_head=resampler_config.dim_head,
+            heads=resampler_config.heads,
+            num_latents=resampler_config.num_latents,
             num_time_embeds=500,  # TODO: Need to give dynamic value based on number of frames.
             ff_mult=4,
             activation='gelu',
@@ -51,9 +51,9 @@ class VisionEncoder(nn.Module):
 
 class VideoTextModel(nn.Module):
 
-    def __init__(self):
+    def __init__(self, config):
         super().__init__()
-        self.vision_encoder = VisionEncoder()
+        self.vision_encoder = VisionEncoder(config)
         self.text_generator = GPT2LMHeadModel.from_pretrained('gpt2')
         self._freeze_params()
 
@@ -63,10 +63,6 @@ class VideoTextModel(nn.Module):
         # Freeze text generator
         for param in self.text_generator.parameters():
             param.requires_grad = False
-
-        # Unfreeze the lm head
-        for param in self.text_generator.lm_head.parameters():
-            param.requires_grad = True
 
     def forward(self, video, text_attention_mask):
         video_embeddings = self.vision_encoder(video)

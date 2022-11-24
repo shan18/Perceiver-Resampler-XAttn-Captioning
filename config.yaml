@@ -1,0 +1,5 @@
+resampler:
+    depth: 6
+    dim_head: 64
+    heads: 8
+    num_latents: 64
