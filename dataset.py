@@ -43,11 +43,11 @@ class MLSLTDataset(Dataset):
         sample_id = self.json_data[index]['id']
         transcript = self.json_data[index]['transcript']['en']
         video_path = os.path.join(self.video_root, str(sample_id), 'en.mp4')
-
         # Process video
         video, _, _ = read_video(video_path, output_format='TCHW', pts_unit='sec')
         video = self.image_processor(images=[x for x in video], return_tensors='pt')['pixel_values']
-
+        video_length = torch.tensor(len(video))
+        
         # Process text
         transcript = self.tokenizer(
             f'{self.tokenizer.bos_token} {transcript} {self.tokenizer.eos_token}',
@@ -56,25 +56,25 @@ class MLSLTDataset(Dataset):
             truncation=True,
             padding='max_length',
         )
-
-        return video, transcript['input_ids'].squeeze(0), transcript['attention_mask'].squeeze(0)
+        
+        return video, video_length, transcript['input_ids'].squeeze(0), transcript['attention_mask'].squeeze(0)
 
     def _collate_pad(self, batch_samples):
-        pad_video, pad_transcript, pad_attention_mask = [], [], []
+        pad_video, pad_transcript, pad_attention_mask, video_lengths = [], [], [], []
         max_video_len = len(max(batch_samples, key=lambda x: len(x[0]))[0])
-        for video, transcript, attention_mask in batch_samples:
+        for video, video_length, transcript, attention_mask in batch_samples:
             # Pad video frames
-            if len(video) < max_video_len:
+            if video_length < max_video_len:
                 video = torch.cat(
                     [video, torch.zeros(max_video_len - len(video), *video.shape[1:], dtype=video.dtype)],
                     dim=0
                 )
             pad_video.append(video)
+            video_lengths.append(video_length)
 
             pad_transcript.append(transcript)
             pad_attention_mask.append(attention_mask)
-
-        return torch.stack(pad_video), torch.stack(pad_transcript), torch.stack(pad_attention_mask)
+        return torch.stack(pad_video), torch.stack(video_lengths), torch.stack(pad_transcript), torch.stack(pad_attention_mask)
 
     def get_dataloader(self, batch_size, shuffle=True, num_workers=1):
         return DataLoader(

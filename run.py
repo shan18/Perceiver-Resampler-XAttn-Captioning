@@ -43,7 +43,7 @@ def main(args):
 
     # Create model
     print('Creating model...')
-    model = VideoTextModel(config).to(device)
+    model = VideoTextModel(config, device).to(device)
     summary(model)
 
     # Create trainer
