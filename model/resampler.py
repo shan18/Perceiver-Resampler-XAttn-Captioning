@@ -93,7 +93,6 @@ class PerceiverResampler(nn.Module):
         num_time_embeds: int = 4,
         ff_mult: int = 4,
         activation: str = 'gelu',
-        device: str = 'cpu'
     ):
         super().__init__()
 
@@ -101,10 +100,10 @@ class PerceiverResampler(nn.Module):
         self.num_queries = num_latents
 
         self.latents = nn.Parameter(torch.randn(num_latents, dim))
+
         self.time_pos_emb = nn.Parameter(torch.randn(num_time_embeds, 1, dim))
 
         self.layers = nn.ModuleList([])
-        self.device = device
         for _ in range(depth):
             self.layers.append(nn.ModuleList([
                 PerceiverAttentionLayer(dim=dim, dim_head=dim_head, heads=heads),
@@ -131,7 +130,7 @@ class PerceiverResampler(nn.Module):
             nn.Linear(inner_dim, dim, bias=False)
         )
 
-    def forward(self, x_f, video_lengths):
+    def forward(self, x_f):
         """Run perceiver resampler on the input visual embeddings
 
         Args:
@@ -146,25 +145,15 @@ class PerceiverResampler(nn.Module):
         batch_size = x_f.shape[0]
         timesteps = x_f.shape[1]
         dim = x_f.shape[3]
-        max_video_len = max(video_lengths)        
+
         assert dim == self.dim
-        time_pos_emb = (self.time_pos_emb).to(self.device)
-        
-        # Add time embeddings to every visual feature of a frame according to the video length
-        for i in range(batch_size): #had to loop since dimension of each element in the batch would be different here - performance issue
-          video_length = video_lengths[i]  
-          print(video_length)
-          pad_pos_emb = torch.zeros(max_video_len - video_length, *time_pos_emb.shape[1:], dtype=time_pos_emb.dtype).to(self.device)
-          print(pad_pos_emb.shape)
-          #pick video_length number of random pos embeds from the bottom of time_pos_emb, pad by appending the rest of the length with zeros
-          padded_pos_emb = torch.cat([time_pos_emb[:video_length], pad_pos_emb], dim=0).to(self.device)  
-          print(padded_pos_emb.shape)
-          print(x_f[i].shape)
-          x_f[i] = x_f[i] + padded_pos_emb
+
+        # Add time embeddings to every visual feature of a frame
+        x_f = x_f + self.time_pos_emb[:timesteps]
 
         # Flatten the frames
-        x_f = rearrange(x_f.to(self.device), 'b T n d -> b (T n) d')
-        
+        x_f = rearrange(x_f, 'b T n d -> b (T n) d')
+
         # Copy the latents for every element in the batch
         x = repeat(self.latents, 'q d -> b q d', b=batch_size)
 
@@ -176,5 +165,4 @@ class PerceiverResampler(nn.Module):
         assert x.shape == torch.Size([batch_size, self.num_queries, self.dim])
 
         norm = self.norm(x)
-        print('exiting resampler \n')
         return norm
