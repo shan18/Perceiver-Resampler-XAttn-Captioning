@@ -32,20 +32,17 @@ class Trainer:
     def train(self, loader):
         self.model.train()
         pbar = ProgressBar(target=len(loader), width=8)
-        for batch_idx, (video, video_length, transcript, text_attn_mask) in enumerate(loader):
-            print('inside train')
-            print(video.shape)
-            video          = video.to(self.device)
-            transcript     = transcript.to(self.device)
+        for batch_idx, (video, transcript, text_attn_mask) in enumerate(loader):
+            video = video.to(self.device)
+            transcript = transcript.to(self.device)
             text_attn_mask = text_attn_mask.to(self.device)
-            video_length   = video_length.to(self.device)
-            
+
             self.optimizer.zero_grad()
-            outputs = self.model(video, text_attn_mask, video_length)
+            outputs = self.model(video, text_attn_mask)
 
             # Compute the loss
             outputs = rearrange(outputs, 'b t d -> b d t')
-            loss    = self.criterion(outputs, transcript)
+            loss = self.criterion(outputs, transcript)
 
             loss.backward()
             self.optimizer.step()
@@ -62,13 +59,12 @@ class Trainer:
         self.model.eval()
         eval_loss = 0
         with torch.no_grad():
-            for video, video_length, transcript, text_attn_mask in loader:
-                video          = video.to(self.device)
-                transcript     = transcript.to(self.device)
+            for video, transcript, text_attn_mask in loader:
+                video = video.to(self.device)
+                transcript = transcript.to(self.device)
                 text_attn_mask = text_attn_mask.to(self.device)
-                video_length   = video_length.to(self.device)
-                
-                outputs = self.model(video, text_attn_mask, video_length)
+
+                outputs = self.model(video, text_attn_mask)
 
                 outputs = rearrange(outputs, 'b t d -> b d t')
                 loss = self.criterion(outputs, transcript)
