@@ -153,13 +153,9 @@ class PerceiverResampler(nn.Module):
         # Add time embeddings to every visual feature of a frame according to the video length
         for i in range(batch_size): #had to loop since dimension of each element in the batch would be different here - performance issue
           video_length = video_lengths[i]  
-          print(video_length)
           pad_pos_emb = torch.zeros(max_video_len - video_length, *time_pos_emb.shape[1:], dtype=time_pos_emb.dtype).to(self.device)
-          print(pad_pos_emb.shape)
           #pick video_length number of random pos embeds from the bottom of time_pos_emb, pad by appending the rest of the length with zeros
           padded_pos_emb = torch.cat([time_pos_emb[:video_length], pad_pos_emb], dim=0).to(self.device)  
-          print(padded_pos_emb.shape)
-          print(x_f[i].shape)
           x_f[i] = x_f[i] + padded_pos_emb
 
         # Flatten the frames
@@ -176,5 +172,4 @@ class PerceiverResampler(nn.Module):
         assert x.shape == torch.Size([batch_size, self.num_queries, self.dim])
 
         norm = self.norm(x)
-        print('exiting resampler \n')
         return norm

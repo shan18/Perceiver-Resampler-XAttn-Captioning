@@ -65,7 +65,7 @@ class VideoTextModel(nn.Module):
 
         # Freeze text generator
         for param in self.text_generator.parameters():
-            param.requires_grad = True
+            param.requires_grad = False
 
     def forward(self, video, text_attention_mask, video_length):
         video_embeddings = self.vision_encoder(video, video_length)
