@@ -8,6 +8,7 @@ from torch import einsum, nn
 
 class SquaredReLU(nn.Module):
     """Squared ReLU activation function"""
+
     def __init__(self):
         super().__init__()
 
@@ -16,6 +17,8 @@ class SquaredReLU(nn.Module):
 
 
 class PerceiverAttentionLayer(nn.Module):
+    """Perceiver Attention Layer"""
+
     def __init__(self, dim: int, dim_head: int = 64, heads: int = 8):
         super().__init__()
         self.scale = dim_head ** -0.5
@@ -83,6 +86,8 @@ class PerceiverAttentionLayer(nn.Module):
 
 
 class PerceiverResampler(nn.Module):
+    """Perceiver Resampler with multi-head attention layer"""
+
     def __init__(
         self,
         dim: int,
@@ -115,6 +120,7 @@ class PerceiverResampler(nn.Module):
 
     def feed_forward_layer(self, dim: int, mult: int = 4, activation: str = 'gelu'):
         """Feed forward layer with given activation function"""
+
         activations = dict(
             gelu=nn.GELU,
             sqrelu=SquaredReLU,
