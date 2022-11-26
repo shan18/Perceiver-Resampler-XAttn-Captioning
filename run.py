@@ -2,14 +2,12 @@ import argparse
 import os
 
 import torch
-from torch import nn
+from omegaconf import OmegaConf
 from torchinfo import summary
 
 from dataset import MLSLTDataset
 from engine import Trainer
 from model import VideoTextModel
-from omegaconf import OmegaConf
-
 
 
 def create_dataset(data_root: str, data_type: str, batch_size: int, num_workers: int):
