@@ -5,6 +5,8 @@ from einops import rearrange, repeat
 from einops_exts import rearrange_many
 from torch import einsum, nn
 
+from .base_model import BaseModel
+
 
 class SquaredReLU(nn.Module):
     """Squared ReLU activation function"""
@@ -85,7 +87,7 @@ class PerceiverAttentionLayer(nn.Module):
         return self.to_out(out)
 
 
-class PerceiverResampler(nn.Module):
+class PerceiverResampler(BaseModel):
     """Perceiver Resampler with multi-head attention layer"""
 
     def __init__(
@@ -98,8 +100,9 @@ class PerceiverResampler(nn.Module):
         num_time_embeds: int = 4,
         ff_mult: int = 4,
         activation: str = 'gelu',
+        trainable: bool = True,
     ):
-        super().__init__()
+        super().__init__(trainable)
 
         self.dim = dim
         self.num_queries = num_latents
@@ -117,6 +120,14 @@ class PerceiverResampler(nn.Module):
 
         # Layer normalization takes as input the query vector length
         self.norm = nn.LayerNorm(dim)
+
+        self._update_trainable_state()
+
+    def get_input_shape(self, batch_size: int = 16, n_frames: int = 75, n_features: int = 50):
+        return (batch_size, n_frames, n_features, self.dim)
+
+    def get_output_shape(self, batch_size: int = 16, n_frames: int = 75):
+        return (batch_size, n_frames, self.num_queries, self.dim)
 
     def feed_forward_layer(self, dim: int, mult: int = 4, activation: str = 'gelu'):
         """Feed forward layer with given activation function"""
