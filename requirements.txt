@@ -10,3 +10,4 @@ torchinfo
 black
 isort
 omegaconf
+hydra-core

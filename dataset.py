@@ -13,12 +13,12 @@ from transformers import CLIPProcessor, GPT2Tokenizer
 
 class MLSLTDataset(Dataset):
 
-    def __init__(self, video_root, json_path):
+    def __init__(self, video_dir, json_path):
         super().__init__()
 
-        assert os.path.exists(video_root), 'The videos directory does not exist.'
+        assert os.path.exists(video_dir), 'The videos directory does not exist.'
 
-        self.video_root = video_root
+        self.video_dir = video_dir
         self._get_labels(json_path)
 
         self.image_processor = CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')
@@ -42,7 +42,7 @@ class MLSLTDataset(Dataset):
     def __getitem__(self, index):
         sample_id = self.json_data[index]['id']
         transcript = self.json_data[index]['transcript']['en']
-        video_path = os.path.join(self.video_root, str(sample_id), 'en.mp4')
+        video_path = os.path.join(self.video_dir, str(sample_id), 'en.mp4')
 
         # Process video
         video, _, _ = read_video(video_path, output_format='TCHW', pts_unit='sec')
@@ -57,6 +57,7 @@ class MLSLTDataset(Dataset):
             padding='max_length',
         )
 
+        # FIXME: Masking needs to be w.r.t. the video length
         return video, transcript['input_ids'].squeeze(0), transcript['attention_mask'].squeeze(0)
 
     def _collate_pad(self, batch_samples):
@@ -76,7 +77,7 @@ class MLSLTDataset(Dataset):
 
         return torch.stack(pad_video), torch.stack(pad_transcript), torch.stack(pad_attention_mask)
 
-    def get_dataloader(self, batch_size, shuffle=True, num_workers=1):
+    def get_dataloader(self, batch_size, num_workers=1, shuffle=True):
         return DataLoader(
             self,
             batch_size=batch_size,
