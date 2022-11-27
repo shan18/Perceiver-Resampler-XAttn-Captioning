@@ -11,3 +11,4 @@ data/test/
 *.json
 shell.py
 slurm/
+exp_logs/

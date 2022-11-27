@@ -1,11 +1,11 @@
 # Config to train the Multilingual-Sign-Language-Translation model on the SP-10 dataset.
 ########################################################################################
 
-name: "mlslt"
+name: mlslt
 
 model:
   vision:
-    pretrained_name: "openai/clip-vit-base-patch32" # Pre-trained weights of the vision encoder found on huggingface
+    pretrained_name: openai/clip-vit-base-patch32 # Pre-trained weights of the vision encoder found on huggingface
     trainable: false
 
   resampler:
@@ -15,11 +15,11 @@ model:
     num_latents: 64
     num_time_embeds: 500
     ff_mult: 4
-    activation: "gelu"
+    activation: gelu
     trainable: true
 
   text:
-    pretrained_name: "gpt2"
+    pretrained_name: gpt2
     trainable: false
 
   optimizer:
@@ -59,19 +59,16 @@ dataset:
 
 trainer:
   epochs: 40
-  enable_checkpointing: true
-
-exp_manager:
   exp_dir: null
-  name: ${name}
+  exp_name: ${name}
   checkpoint_callback_params:
-    monitor: "val_loss"
-    mode: "min"
+    monitor: val_loss
+    mode: min
     save_top_k: 5
 
 hydra:
   run:
-    dir: ${exp_manager.exp_dir}/${exp_manager.name}
+    dir: ${trainer.exp_dir}/${trainer.exp_name}
   sweep:
-    dir: ${hydra.run.dir}/${exp_manager.name}
+    dir: ${hydra.run.dir}
     subdir: ${hydra.job.num}
