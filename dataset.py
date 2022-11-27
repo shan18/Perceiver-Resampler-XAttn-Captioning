@@ -12,12 +12,12 @@ from transformers import CLIPProcessor, GPT2Tokenizer
 
 
 class MLSLTDataset(Dataset):
-
-    def __init__(self, video_dir, json_path):
+    def __init__(self, video_dir, json_path, max_length):
         super().__init__()
 
         assert os.path.exists(video_dir), 'The videos directory does not exist.'
 
+        self.max_length = max_length
         self.video_dir = video_dir
         self._get_labels(json_path)
 
@@ -52,7 +52,7 @@ class MLSLTDataset(Dataset):
         transcript = self.tokenizer(
             f'{self.tokenizer.bos_token} {transcript} {self.tokenizer.eos_token}',
             return_tensors='pt',
-            max_length=64,  # TODO: Assign this via paramters
+            max_length=self.max_length,
             truncation=True,
             padding='max_length',
         )
@@ -67,8 +67,7 @@ class MLSLTDataset(Dataset):
             # Pad video frames
             if len(video) < max_video_len:
                 video = torch.cat(
-                    [video, torch.zeros(max_video_len - len(video), *video.shape[1:], dtype=video.dtype)],
-                    dim=0
+                    [video, torch.zeros(max_video_len - len(video), *video.shape[1:], dtype=video.dtype)], dim=0
                 )
             pad_video.append(video)
 
