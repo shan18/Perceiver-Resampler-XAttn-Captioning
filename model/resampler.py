@@ -23,7 +23,7 @@ class PerceiverAttentionLayer(nn.Module):
 
     def __init__(self, dim: int, dim_head: int = 64, heads: int = 8):
         super().__init__()
-        self.scale = dim_head ** -0.5
+        self.scale = dim_head**-0.5
         self.heads = heads
         self.dim_head = dim_head
         inner_dim = dim_head * heads
@@ -107,16 +107,20 @@ class PerceiverResampler(BaseModel):
         self.dim = dim
         self.num_queries = num_latents
 
-        self.latents = nn.Parameter(torch.randn(num_latents, dim))
+        self.latents = nn.Parameter(torch.randn(num_latents, dim))  # type: ignore[reportPrivateUsage]
 
-        self.time_pos_emb = nn.Parameter(torch.randn(num_time_embeds, 1, dim))
+        self.time_pos_emb = nn.Parameter(torch.randn(num_time_embeds, 1, dim))  # type: ignore[reportPrivateUsage]
 
         self.layers = nn.ModuleList([])
         for _ in range(depth):
-            self.layers.append(nn.ModuleList([
-                PerceiverAttentionLayer(dim=dim, dim_head=dim_head, heads=heads),
-                self.feed_forward_layer(dim=dim, mult=ff_mult, activation=activation)
-            ]))
+            self.layers.append(
+                nn.ModuleList(
+                    [
+                        PerceiverAttentionLayer(dim=dim, dim_head=dim_head, heads=heads),
+                        self.feed_forward_layer(dim=dim, mult=ff_mult, activation=activation),
+                    ]
+                )
+            )
 
         # Layer normalization takes as input the query vector length
         self.norm = nn.LayerNorm(dim)
@@ -132,11 +136,7 @@ class PerceiverResampler(BaseModel):
     def feed_forward_layer(self, dim: int, mult: int = 4, activation: str = 'gelu'):
         """Feed forward layer with given activation function"""
 
-        activations = dict(
-            gelu=nn.GELU,
-            sqrelu=SquaredReLU,
-            relu=nn.ReLU
-        )
+        activations = dict(gelu=nn.GELU, sqrelu=SquaredReLU, relu=nn.ReLU)
         assert activation in activations, f'activation can only be one of {activations.keys()}'
 
         inner_dim = int(dim * mult)
@@ -144,7 +144,7 @@ class PerceiverResampler(BaseModel):
             nn.LayerNorm(dim),
             nn.Linear(dim, inner_dim, bias=False),
             activations[activation](),
-            nn.Linear(inner_dim, dim, bias=False)
+            nn.Linear(inner_dim, dim, bias=False),
         )
 
     def forward(self, x_f):
@@ -175,7 +175,7 @@ class PerceiverResampler(BaseModel):
         x = repeat(self.latents, 'q d -> b q d', b=batch_size)
 
         # Apply attention and feed forward layer
-        for attn, ffw in self.layers:
+        for attn, ffw in self.layers:  # type: ignore[reportGeneralTypeIssues]
             x = x + attn(x_f, x)
             x = x + ffw(x)
 

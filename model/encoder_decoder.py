@@ -1,3 +1,5 @@
+# type: ignore[reportGeneralTypeIssues]
+
 from einops import rearrange
 from omegaconf import DictConfig
 from transformers import CLIPVisionModel, GPT2LMHeadModel, logging
@@ -41,7 +43,6 @@ class VisionEncoder(BaseModel):
 
 
 class TextGenerator(BaseModel):
-
     def __init__(self, pretrained_name: str, trainable: bool):
         super().__init__(trainable)
         self._model = GPT2LMHeadModel.from_pretrained(pretrained_name)
@@ -62,16 +63,11 @@ class TextGenerator(BaseModel):
         Returns:
             Logits of the output transcript
         """
-        return self._model(
-            inputs_embeds=input_embeddings, attention_mask=attention_mask
-        ).logits
+        return self._model(inputs_embeds=input_embeddings, attention_mask=attention_mask).logits
 
 
 class VideoTextModel(BaseModel):
-
-    def __init__(
-        self, vision_encoder_cfg: DictConfig, resampler_cfg: DictConfig, text_generator_cfg: DictConfig
-    ):
+    def __init__(self, vision_encoder_cfg: DictConfig, resampler_cfg: DictConfig, text_generator_cfg: DictConfig):
         super().__init__(True)
         self.vision_encoder = VisionEncoder(**vision_encoder_cfg)
         self.resampler = PerceiverResampler(self.vision_encoder.get_output_shape()[-1], **resampler_cfg)
