@@ -1,33 +1,68 @@
 import os
+from typing import Union
 
 import torch
 from einops import rearrange
+from omegaconf import DictConfig
 from torch import nn
-from torch.optim import AdamW
+from torch.optim import Adam, AdamW
+from torch.utils.data import DataLoader
 from transformers import get_cosine_schedule_with_warmup
 
-from utils import ProgressBar
+from utils import CheckpointManager, ProgressBar
 
 
 class Trainer:
-
-    def __init__(self, model: nn.Module, checkpoint_dir: str, device: str = 'cpu'):
+    def __init__(self, model: nn.Module, checkpoint_callback_params: Union[dict, DictConfig], device: str = 'cpu'):
         self.model = model.to(device)
-        self.checkpoint_dir = checkpoint_dir
-        self.recent_checkpoints = []
+        self.ckpt_manager = CheckpointManager(self.model, 'checkpoints', **checkpoint_callback_params)
         self.device = device
 
-    def _prepare_for_training(self, num_steps_per_epoch, epochs):
+    def _prepare_for_training(self, optimizer_cfg, num_steps_per_epoch, epochs):
+        # Create the loss function
         self.criterion = nn.CrossEntropyLoss()
 
-        self.optimizer = AdamW(self.model.parameters(), lr=0.001)
+        # Prepare the optimizer
+        assert optimizer_cfg['name'] in ['adamw', 'adam'], 'Optimizer must be either AdamW or Adam'
+        if optimizer_cfg['name'] == 'adamw':
+            self.optimizer = AdamW(
+                self.model.parameters(),
+                lr=optimizer_cfg['lr'],
+                weight_decay=optimizer_cfg['weight_decay'],
+                betas=optimizer_cfg['betas'],
+            )
+        elif optimizer_cfg['name'] == 'adam':
+            self.optimizer = Adam(
+                self.model.parameters(),
+                lr=optimizer_cfg['lr'],
+                weight_decay=optimizer_cfg['weight_decay'],
+                betas=optimizer_cfg['betas'],
+            )
 
-        total_steps = num_steps_per_epoch * epochs
-        self.scheduler = get_cosine_schedule_with_warmup(
-            self.optimizer,
-            num_warmup_steps=total_steps // 10,  # 10% of the total number of steps
-            num_training_steps=total_steps,
-        )
+        # Setup scheduler
+        self.scheduler = None
+        if optimizer_cfg['scheduler']['name'] is not None:
+            assert optimizer_cfg['scheduler']['name'] in ['CosineAnnealing'], 'Scheduler must be CosineAnnealing'
+
+            total_steps = num_steps_per_epoch * epochs
+            cfg_warmup_steps = optimizer_cfg['scheduler']['warmup_steps']
+            cfg_warmup_ratio = optimizer_cfg['scheduler']['warmup_ratio']
+
+            if cfg_warmup_steps is not None:
+                assert cfg_warmup_steps < total_steps
+                warmup_steps = cfg_warmup_steps
+            elif cfg_warmup_ratio is not None:
+                assert cfg_warmup_ratio < 1
+                warmup_steps = int(total_steps * cfg_warmup_ratio)
+            else:
+                raise ValueError('Either warmup_steps or warmup_ratio must be specified')
+
+            if optimizer_cfg['scheduler']['name'] == 'CosineAnnealing':
+                self.scheduler = get_cosine_schedule_with_warmup(
+                    self.optimizer,
+                    num_warmup_steps=warmup_steps,
+                    num_training_steps=total_steps,
+                )
 
     def train(self, loader):
         self.model.train()
@@ -46,14 +81,22 @@ class Trainer:
 
             loss.backward()
             self.optimizer.step()
-            self.scheduler.step()
+            if self.scheduler is not None:
+                self.scheduler.step()
 
             # Update progress bar
             pbar.update(batch_idx, values=[('Loss', round(loss.item(), 4))])
 
-        pbar.add(1, values=[
-            ('Loss', round(loss.item(), 4)),
-        ])
+            # FIXME: Remove this
+            if batch_idx == 2:
+                break
+
+        pbar.add(
+            1,
+            values=[
+                ('Loss', round(loss.item(), 4)),  # type: ignore[reportUnboundVariable]
+            ],
+        )
 
     def evaluate(self, loader, data_type='dev'):
         self.model.eval()
@@ -73,29 +116,19 @@ class Trainer:
         # Compute the average loss
         eval_loss /= len(loader)
 
-        print(
-            f'{"Validation" if data_type == "dev" else "Test"} set: '
-            f'Average loss: {eval_loss:.4f}\n'
-        )
+        print(f'{"Validation" if data_type == "dev" else "Test"} set: ' f'Average loss: {eval_loss:.4f}\n')
 
         return eval_loss
 
-    def fit(self, train_loader, dev_loader, epochs):
-        self._prepare_for_training(len(train_loader), epochs)
-        best_eval_loss = float('inf')
+    def fit(
+        self, train_loader: DataLoader, dev_loader: DataLoader, optimizer_cfg: Union[dict, DictConfig], epochs: int
+    ):
+        self._prepare_for_training(optimizer_cfg, len(train_loader), epochs)
+
         for epoch in range(epochs):
             print(f'\nEpoch {epoch + 1}:')
             self.train(train_loader)
-
             eval_loss = self.evaluate(dev_loader)
-            if eval_loss < best_eval_loss:
-                print(f'Validation loss improved from {best_eval_loss:.4f} to {eval_loss:.4f}. Saving model...')
-                best_eval_loss = eval_loss
-                self.save_checkpoint(epoch, eval_loss)
 
-    def save_checkpoint(self, epoch, loss):
-        self.recent_checkpoints.append(os.path.join(self.checkpoint_dir, f'ckpt-ep_{epoch}-loss_{loss:.4f}.pt'))
-        if len(self.recent_checkpoints) > 5:  # TODO: Assign the top k with a parameter
-            oldest_ckpt_file = self.recent_checkpoints.pop(0)
-            os.remove(oldest_ckpt_file)
-        torch.save(self.model.state_dict(), self.recent_checkpoints[-1])
+            # Log the progress
+            self.ckpt_manager.log(epoch, eval_loss)
