@@ -6,6 +6,7 @@ Usage:
 ======
 
 HYDRA_FULL_ERROR=1 python run.py \
+    --config-path=<Directory containing the config file> \
     --config-name=config.yaml \
     name=<name of the experiment> \
     dataset.train_ds.video_dir=<Directory containing the videos for train set> \
