@@ -110,7 +110,7 @@ class PerceiverResampler(BaseModel):
         self.device = device
         self.latents = nn.Parameter(torch.randn(num_latents, dim))  # type: ignore[reportPrivateUsage]
 
-        self.time_pos_emb = nn.Parameter(torch.randn(num_time_embeds, 1, dim)).to(self.device)  # type: ignore[reportPrivateUsage]
+        self.time_pos_emb = nn.Parameter(torch.randn(num_time_embeds, 1, dim))  # type: ignore[reportPrivateUsage]
 
         self.layers = nn.ModuleList([])
         for _ in range(depth):
@@ -166,15 +166,15 @@ class PerceiverResampler(BaseModel):
         assert dim == self.dim        
 
         #generates a full matrix with sequential numbers, on_device to support comparision with video_lengths in the next step
-        mask = torch.arange(1, max_video_len+1).repeat(batch_size,1).to(self.device)        
+        mask = torch.arange(1, max_video_len+1).repeat(batch_size,1).to(self.device)   #(batch_size, max_video_len)          
         #subtract the length from the sequence and put 1s on places where the value is negative
-        mask = torch.where(mask<=video_lengths.repeat(max_video_len,1).T.to(self.device), 1, 0)
+        mask = torch.where(mask<=video_lengths.repeat(max_video_len,1).T.to(self.device), 1, 0) #(batch_size, max_video_len)          
         #to match embeddings dimension        
-        mask = (mask.unsqueeze(2).unsqueeze(3).repeat(1,1,1,self.dim))
-
+        mask = (mask.unsqueeze(2).unsqueeze(3).repeat(1,1,1,self.dim)) #(batch_size, max_video_len, 1, dim)        
+        
         # Add time embeddings to every visual feature of a frame according to their lengths
         # expand doesn't create a copy like repeat
-        x_f = x_f + mask*(self.time_pos_emb[:max_video_len].unsqueeze(0).expand(batch_size,-1,-1,-1))  #(batch_size*max_video_len)*(batch_size*max_video_len*1*768)
+        x_f = x_f + mask*(self.time_pos_emb[:max_video_len].unsqueeze(0).expand(batch_size,-1,-1,-1))  #(batch_size, max_video_len, 1, dim)*(batch_size, max_video_len, 1, dim)
 
         # Flatten the frames
         x_f = rearrange(x_f, 'b T n d -> b (T n) d')
