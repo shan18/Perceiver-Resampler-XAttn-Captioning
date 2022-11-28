@@ -47,7 +47,12 @@ def main(cfg):
 
     # Create trainer
     print('Creating trainer...')
-    trainer = Trainer(model, cfg.trainer.checkpoint_callback_params, device=device)
+    trainer = Trainer(
+        model,
+        os.path.join(cfg.trainer.exp_dir, cfg.trainer.exp_name),
+        cfg.trainer.checkpoint_callback_params,
+        device=device,
+    )
 
     # Train
     print('Training...')

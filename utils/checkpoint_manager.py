@@ -20,20 +20,16 @@ class CheckpointManager:
         os.makedirs(self.checkpoint_dir, exist_ok=True)
 
     def log(self, epoch: int, score: float):
-        if self.mode == 'min':
-            if score < self.best_score:
-                print(f'{self.monitor} improved from {self.best_score:.4f} to {score:.4f}. Saving model...')
-                self.best_score = score
-                self.save_checkpoint(epoch, score)
+        if (self.mode == 'min' and score < self.best_score) or (self.mode == 'max' and score > self.best_score):
+            print(f'{self.monitor} improved from {self.best_score:.4f} to {score:.4f}')
+            self.best_score = score
+            self.save_checkpoint(epoch, score)
         else:
-            if score > self.best_score:
-                print(f'{self.monitor} improved from {self.best_score:.4f} to {score:.4f}. Saving model...')
-                self.best_score = score
-                self.save_checkpoint(epoch, score)
+            print(f'{self.monitor} did not improve. Best {self.monitor} is {self.best_score:.4f}')
 
     def save_checkpoint(self, epoch: int, score: float):
         self.recent_checkpoints.append(
-            os.path.join(self.checkpoint_dir, f'ckpt-ep_{epoch}-{self.monitor}_{score:.4f}.pt')
+            os.path.join(self.checkpoint_dir, f'ckpt-epoch_{epoch}-{self.monitor}_{score:.4f}.pt')
         )
         if len(self.recent_checkpoints) > self.save_top_k:
             oldest_ckpt_file = self.recent_checkpoints.pop(0)
