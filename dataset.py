@@ -47,6 +47,7 @@ class MLSLTDataset(Dataset):
         # Process video
         video, _, _ = read_video(video_path, output_format='TCHW', pts_unit='sec')
         video = self.image_processor(images=[x for x in video], return_tensors='pt')['pixel_values']
+        video_length = torch.tensor(len(video))
 
         # Process text
         transcript = self.tokenizer(
@@ -57,20 +58,19 @@ class MLSLTDataset(Dataset):
             padding='max_length',
         )
 
-        return video, transcript['input_ids'].squeeze(0)
+        return video, video_length, transcript['input_ids'].squeeze(0)
 
     def _collate_pad(self, batch_samples):
         pad_video, pad_transcript, video_lengths = [], [], []
         max_video_len = len(max(batch_samples, key=lambda x: len(x[0]))[0])
-        for video, transcript in batch_samples:
-            # Pad video frames
-            video_length = len(video)
+        for video, video_length, transcript in batch_samples:
+            # Pad video frames            
             if video_length < max_video_len:
                 video = torch.cat(
                     [video, torch.zeros(max_video_len - len(video), *video.shape[1:], dtype=video.dtype)], dim=0
                 )
             pad_video.append(video)
-            video_lengths.append(torch.tensor(video_length))
+            video_lengths.append(video_length)
             pad_transcript.append(transcript)
 
         return torch.stack(pad_video), torch.stack(video_lengths), torch.stack(pad_transcript)
