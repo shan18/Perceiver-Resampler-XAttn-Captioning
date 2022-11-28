@@ -9,6 +9,13 @@ from .resampler import PerceiverResampler
 
 
 class VisionEncoder(BaseModel):
+    """Model to encode the video frames.
+
+    Args:
+        pretrained_name: name of the pretrained model from huggingface
+        trainable: whether the model is trainable
+    """
+
     def __init__(self, pretrained_name: str, trainable: bool):
         super().__init__(trainable)
 
@@ -43,6 +50,13 @@ class VisionEncoder(BaseModel):
 
 
 class TextGenerator(BaseModel):
+    """Model to generate the text.
+
+    Args:
+        pretrained_name: name of the pretrained model from huggingface
+        trainable: whether the model is trainable
+    """
+
     def __init__(self, pretrained_name: str, trainable: bool):
         super().__init__(trainable)
         self._model = GPT2LMHeadModel.from_pretrained(pretrained_name)
@@ -67,6 +81,14 @@ class TextGenerator(BaseModel):
 
 
 class VideoTextModel(BaseModel):
+    """Model to encode the video frames and generate the text.
+
+    Args:
+        vision_encoder_cfg: config for the vision encoder
+        resampler_cfg: config for the resampler
+        text_generator_cfg: config for the text generator
+    """
+
     def __init__(self, vision_encoder_cfg: DictConfig, resampler_cfg: DictConfig, text_generator_cfg: DictConfig):
         super().__init__(True)
         self.vision_encoder = VisionEncoder(**vision_encoder_cfg)
