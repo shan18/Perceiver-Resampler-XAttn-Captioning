@@ -86,6 +86,7 @@ class VideoTextModel(BaseModel):
         vision_encoder_cfg: config for the vision encoder
         resampler_cfg: config for the resampler
         text_generator_cfg: config for the text generator
+        device: current device
     """
 
     def __init__(self, vision_encoder_cfg: DictConfig, resampler_cfg: DictConfig, text_generator_cfg: DictConfig, device: str='cpu'):
