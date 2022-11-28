@@ -75,13 +75,12 @@ class Trainer:
     def train(self, loader):
         self.model.train()
         pbar = ProgressBar(target=len(loader), width=8)
-        for batch_idx, (video, transcript, text_attn_mask) in enumerate(loader):
+        for batch_idx, (video, transcript) in enumerate(loader):
             video = video.to(self.device)
             transcript = transcript.to(self.device)
-            text_attn_mask = text_attn_mask.to(self.device)
 
             self.optimizer.zero_grad()
-            outputs = self.model(video, text_attn_mask)
+            outputs = self.model(video)
 
             # Compute the loss
             outputs = rearrange(outputs, 'b t d -> b d t')
@@ -106,12 +105,11 @@ class Trainer:
         self.model.eval()
         eval_loss = 0
         with torch.no_grad():
-            for video, transcript, text_attn_mask in loader:
+            for video, transcript in loader:
                 video = video.to(self.device)
                 transcript = transcript.to(self.device)
-                text_attn_mask = text_attn_mask.to(self.device)
 
-                outputs = self.model(video, text_attn_mask)
+                outputs = self.model(video)
 
                 outputs = rearrange(outputs, 'b t d -> b d t')
                 loss = self.criterion(outputs, transcript)
