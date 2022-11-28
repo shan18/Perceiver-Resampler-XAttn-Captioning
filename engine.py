@@ -105,11 +105,11 @@ class Trainer:
         self.model.eval()
         eval_loss = 0
         with torch.no_grad():
-            for video, transcript in loader:
+            for video, video_lengths, transcript in loader:
                 video = video.to(self.device)
                 transcript = transcript.to(self.device)
-
-                outputs = self.model(video)
+                video_lengths = video_lengths.to(self.device)
+                outputs = self.model(video, video_lengths)
 
                 outputs = rearrange(outputs, 'b t d -> b d t')
                 loss = self.criterion(outputs, transcript)

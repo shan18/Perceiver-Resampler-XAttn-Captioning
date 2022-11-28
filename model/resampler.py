@@ -168,7 +168,7 @@ class PerceiverResampler(BaseModel):
         #generates a full matrix with sequential numbers, on_device to support comparision with video_lengths in the next step
         mask = torch.arange(1, max_video_len+1).repeat(batch_size,1).to(self.device)   #(batch_size, max_video_len)          
         #subtract the length from the sequence and put 1s on places where the value is negative
-        mask = torch.where(mask<=video_lengths.repeat(max_video_len,1).T.to(self.device), 1, 0) #(batch_size, max_video_len)          
+        mask = torch.where(mask<=video_lengths.repeat(max_video_len,1).T, 1, 0) #(batch_size, max_video_len)          
         #to match embeddings dimension        
         mask = (mask.unsqueeze(2).unsqueeze(3).repeat(1,1,1,self.dim)) #(batch_size, max_video_len, 1, dim)        
         
