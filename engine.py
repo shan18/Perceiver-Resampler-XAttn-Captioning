@@ -75,12 +75,12 @@ class Trainer:
     def train(self, loader):
         self.model.train()
         pbar = ProgressBar(target=len(loader), width=8)
-        for batch_idx, (video, transcript) in enumerate(loader):
+        for batch_idx, (video, video_lengths, transcript) in enumerate(loader):
             video = video.to(self.device)
             transcript = transcript.to(self.device)
-
+            video_lengths = video_lengths.to(self.device)
             self.optimizer.zero_grad()
-            outputs = self.model(video)
+            outputs = self.model(video, video_lengths)
 
             # Compute the loss
             outputs = rearrange(outputs, 'b t d -> b d t')
