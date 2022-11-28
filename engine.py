@@ -13,9 +13,17 @@ from utils import CheckpointManager, ProgressBar
 
 
 class Trainer:
-    def __init__(self, model: nn.Module, checkpoint_callback_params: Union[dict, DictConfig], device: str = 'cpu'):
+    def __init__(
+        self, model: nn.Module, log_dir: str, checkpoint_callback_params: Union[dict, DictConfig], device: str = 'cpu'
+    ):
         self.model = model.to(device)
-        self.ckpt_manager = CheckpointManager(self.model, 'checkpoints', **checkpoint_callback_params)
+
+        self.log_dir = log_dir
+        os.makedirs(self.log_dir, exist_ok=True)
+
+        self.ckpt_manager = CheckpointManager(
+            self.model, os.path.join(self.log_dir, 'checkpoints'), **checkpoint_callback_params
+        )
         self.device = device
 
     def _prepare_for_training(self, optimizer_cfg, num_steps_per_epoch, epochs):
@@ -87,10 +95,6 @@ class Trainer:
             # Update progress bar
             pbar.update(batch_idx, values=[('Loss', round(loss.item(), 4))])
 
-            # FIXME: Remove this
-            if batch_idx == 2:
-                break
-
         pbar.add(
             1,
             values=[
@@ -125,8 +129,8 @@ class Trainer:
     ):
         self._prepare_for_training(optimizer_cfg, len(train_loader), epochs)
 
-        for epoch in range(epochs):
-            print(f'\nEpoch {epoch + 1}:')
+        for epoch in range(1, epochs + 1):
+            print(f'\nEpoch {epoch}:')
             self.train(train_loader)
             eval_loss = self.evaluate(dev_loader)
 
