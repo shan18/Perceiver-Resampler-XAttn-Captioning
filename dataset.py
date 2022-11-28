@@ -57,13 +57,12 @@ class MLSLTDataset(Dataset):
             padding='max_length',
         )
 
-        # FIXME: Masking needs to be w.r.t. the video length
-        return video, transcript['input_ids'].squeeze(0), transcript['attention_mask'].squeeze(0)
+        return video, transcript['input_ids'].squeeze(0)
 
     def _collate_pad(self, batch_samples):
-        pad_video, pad_transcript, pad_attention_mask = [], [], []
+        pad_video, pad_transcript = [], []
         max_video_len = len(max(batch_samples, key=lambda x: len(x[0]))[0])
-        for video, transcript, attention_mask in batch_samples:
+        for video, transcript in batch_samples:
             # Pad video frames
             if len(video) < max_video_len:
                 video = torch.cat(
@@ -72,9 +71,8 @@ class MLSLTDataset(Dataset):
             pad_video.append(video)
 
             pad_transcript.append(transcript)
-            pad_attention_mask.append(attention_mask)
 
-        return torch.stack(pad_video), torch.stack(pad_transcript), torch.stack(pad_attention_mask)
+        return torch.stack(pad_video), torch.stack(pad_transcript)
 
     def get_dataloader(self, batch_size, num_workers=1, shuffle=True):
         return DataLoader(

@@ -68,16 +68,15 @@ class TextGenerator(BaseModel):
     def get_output_shape(self, batch_size: int = 16, timesteps: int = 75):
         return (batch_size, timesteps, self._model.lm_head.out_features)
 
-    def forward(self, input_embeddings, attention_mask):
+    def forward(self, input_embeddings):
         """
         Args:
             input_embeddings: video embeddings with shape (batch_size, seq_length, 768)
-            attention_mask: attention masks for the padding of tokens
 
         Returns:
             Logits of the output transcript
         """
-        return self._model(inputs_embeds=input_embeddings, attention_mask=attention_mask).logits
+        return self._model(inputs_embeds=input_embeddings).logits
 
 
 class VideoTextModel(BaseModel):
@@ -95,7 +94,7 @@ class VideoTextModel(BaseModel):
         self.resampler = PerceiverResampler(self.vision_encoder.get_output_shape()[-1], **resampler_cfg)
         self.text_generator = TextGenerator(**text_generator_cfg)
 
-    def forward(self, video, text_attention_mask):
+    def forward(self, video):
         # Encode video
         video_embeddings = self.vision_encoder(video)
 
@@ -103,6 +102,6 @@ class VideoTextModel(BaseModel):
         resampled_embeddings = self.resampler(video_embeddings)
 
         # Generate text
-        text_output = self.text_generator(resampled_embeddings, text_attention_mask)
+        text_output = self.text_generator(resampled_embeddings)
 
         return text_output
