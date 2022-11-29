@@ -12,13 +12,13 @@ from transformers import CLIPProcessor, GPT2Tokenizer
 
 
 class MLSLTDataset(Dataset):
-
-    def __init__(self, video_root, json_path):
+    def __init__(self, video_dir, json_path, max_length):
         super().__init__()
 
-        assert os.path.exists(video_root), 'The videos directory does not exist.'
+        assert os.path.exists(video_dir), 'The videos directory does not exist.'
 
-        self.video_root = video_root
+        self.max_length = max_length
+        self.video_dir = video_dir
         self._get_labels(json_path)
 
         self.image_processor = CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')
@@ -42,41 +42,40 @@ class MLSLTDataset(Dataset):
     def __getitem__(self, index):
         sample_id = self.json_data[index]['id']
         transcript = self.json_data[index]['transcript']['en']
-        video_path = os.path.join(self.video_root, str(sample_id), 'en.mp4')
+        video_path = os.path.join(self.video_dir, str(sample_id), 'en.mp4')
 
         # Process video
         video, _, _ = read_video(video_path, output_format='TCHW', pts_unit='sec')
         video = self.image_processor(images=[x for x in video], return_tensors='pt')['pixel_values']
+        video_length = torch.tensor(len(video))
 
         # Process text
         transcript = self.tokenizer(
             f'{self.tokenizer.bos_token} {transcript} {self.tokenizer.eos_token}',
             return_tensors='pt',
-            max_length=64,  # TODO: Assign this via paramters
+            max_length=self.max_length,
             truncation=True,
             padding='max_length',
         )
 
-        return video, transcript['input_ids'].squeeze(0), transcript['attention_mask'].squeeze(0)
+        return video, video_length, transcript['input_ids'].squeeze(0)
 
     def _collate_pad(self, batch_samples):
-        pad_video, pad_transcript, pad_attention_mask = [], [], []
+        pad_video, pad_transcript, video_lengths = [], [], []
         max_video_len = len(max(batch_samples, key=lambda x: len(x[0]))[0])
-        for video, transcript, attention_mask in batch_samples:
-            # Pad video frames
-            if len(video) < max_video_len:
+        for video, video_length, transcript in batch_samples:
+            # Pad video frames            
+            if video_length < max_video_len:
                 video = torch.cat(
-                    [video, torch.zeros(max_video_len - len(video), *video.shape[1:], dtype=video.dtype)],
-                    dim=0
+                    [video, torch.zeros(max_video_len - len(video), *video.shape[1:], dtype=video.dtype)], dim=0
                 )
             pad_video.append(video)
-
+            video_lengths.append(video_length)
             pad_transcript.append(transcript)
-            pad_attention_mask.append(attention_mask)
 
-        return torch.stack(pad_video), torch.stack(pad_transcript), torch.stack(pad_attention_mask)
+        return torch.stack(pad_video), torch.stack(video_lengths), torch.stack(pad_transcript)
 
-    def get_dataloader(self, batch_size, shuffle=True, num_workers=1):
+    def get_dataloader(self, batch_size, num_workers=1, shuffle=True):
         return DataLoader(
             self,
             batch_size=batch_size,

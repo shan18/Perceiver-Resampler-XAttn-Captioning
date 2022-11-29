@@ -1,76 +1,102 @@
-import argparse
+"""
+This is the main script that is used to train the model on the
+Multilingual Sign Language Translation dataset.
+
+Usage:
+======
+
+HYDRA_FULL_ERROR=1 python run.py \
+    --config-path=<Directory containing the config file> \
+    --config-name=config.yaml \
+    name=<name of the experiment> \
+    dataset.train_ds.video_dir=<Directory containing the videos for train set> \
+    dataset.train_ds.json_path=<Path to the json file with the transcripts for train set> \
+    dataset.validation_ds.video_dir=<Directory containing the videos for validation set> \
+    dataset.validation_ds.json_path=<Path to the json file with the transcripts for validation set> \
+    trainer.exp_dir=<Directory to save the checkpoints and logs>
+"""
+
+
 import os
 
+import hydra
 import torch
-from torch import nn
-from torchinfo import summary
+from omegaconf import DictConfig, OmegaConf, open_dict
 
 from dataset import MLSLTDataset
 from engine import Trainer
 from model import VideoTextModel
-from omegaconf import OmegaConf
 
 
+def check_mandatory_args(cfg: DictConfig):
+    """Checks if the mandatory arguments are present in the config."""
+    for k, v in cfg.items():
+        if isinstance(v, DictConfig):
+            check_mandatory_args(v)
+        elif v is None:
+            raise ValueError(f'Argument {k} is not specified in the config')
 
-def create_dataset(data_root: str, data_type: str, batch_size: int, num_workers: int):
+
+def setup_log_dir(cfg: DictConfig):
+    """Sets up the log directory for the experiment if not specified in the config."""
+    if cfg.trainer.exp_dir is None:
+        with open_dict(cfg.trainer):
+            cfg.trainer.exp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'exp_logs')
+
+
+def create_dataset(video_dir: str, json_path: str, batch_size: int, num_workers: int, shuffle: bool, max_length: int):
     """Creates the dataset and its dataloaders
 
     Args:
-        data_root: The root directory of the dataset containing
-            the video directory and the json file.
-        data_type: The type of the dataset. Can be either `train`, `dev`, or `test`.
-        batch_size: The batch size of the dataloader.
-        num_workers: The number of workers for the dataloader.
+        video_dir: The directory containing the videos
+        json_path: Path to the json file with the transcripts
+        batch_size: The batch size of the dataloader
+        num_workers: The number of workers for the dataloader
+        shuffle: Whether to shuffle the dataset
+        max_length: The maximum length of each sample in the dataset
 
     Returns:
-        The MLSLTDataset dataloader and the dataset object
+        The MLSLTDataset dataset object and the data loader
     """
-    print(f'Loading dataset from {data_root}/{data_type} and {data_root}/{data_type}.json')
-    dataset = MLSLTDataset(
-        os.path.join(data_root, data_type), os.path.join(data_root, f'{data_type}.json')
-    )
-    loader = dataset.get_dataloader(batch_size, num_workers=num_workers)
+    print(f'Loading dataset from {video_dir} and {json_path}')
+    dataset = MLSLTDataset(video_dir, json_path, max_length)
+    loader = dataset.get_dataloader(batch_size, num_workers=num_workers, shuffle=shuffle)
     return dataset, loader
 
 
-def main(args):
-    config = OmegaConf.load(args.config)
+@hydra.main(version_base=None, config_path=os.path.dirname(os.path.abspath(__file__)), config_name='config.yaml')
+def main(cfg):
+    check_mandatory_args(cfg.dataset.train_ds)
+    check_mandatory_args(cfg.dataset.validation_ds)
+    setup_log_dir(cfg)
+
+    print(f'Hydra config:\n{OmegaConf.to_yaml(cfg)}')
+
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
     # Create dataloaders
     print('Creating dataloaders...')
-    _, train_loader = create_dataset(args.data_root, 'train', args.batch_size, args.num_workers)
-    _, dev_loader = create_dataset(args.data_root, 'dev', args.batch_size, args.num_workers)
+    _, train_loader = create_dataset(**cfg.dataset.train_ds, max_length=cfg.model.resampler.num_latents)
+    _, dev_loader = create_dataset(**cfg.dataset.validation_ds, max_length=cfg.model.resampler.num_latents)
 
     # Create model
     print('Creating model...')
-    model = VideoTextModel(config).to(device)
-    summary(model)
+    model = VideoTextModel(cfg.model.vision, cfg.model.resampler, cfg.model.text, device).to(device)
+    model.summary()
 
     # Create trainer
     print('Creating trainer...')
-    trainer = Trainer(model, args.checkpoint_dir, device=device)
+    trainer = Trainer(
+        model,
+        os.path.join(cfg.trainer.exp_dir, cfg.trainer.exp_name),
+        cfg.trainer.checkpoint_callback_params,
+        device=device,
+    )
 
     # Train
     print('Training...')
-    trainer.fit(train_loader, dev_loader, args.epochs)
+    trainer.fit(train_loader, dev_loader, cfg.model.optimizer, cfg.trainer.epochs)
 
 
 if __name__ == '__main__':
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '--data_root',
-        default=os.path.join(BASE_DIR, 'data'),
-        help='Path containing the train, dev and test dataset',
-    )
-    parser.add_argument('--batch_size', type=int, default=16, help='Batch size')
-    parser.add_argument('--num_workers', type=int, default=4, help='Number of workers')
-    parser.add_argument('--epochs', type=int, default=10, help='Number of epochs')
-    parser.add_argument('--checkpoint_dir', default=os.path.join(BASE_DIR, 'checkpoints'), help='Checkpoint directory')
-    parser.add_argument('--config', default=os.path.join(BASE_DIR, 'config.yaml'), help='Config path')
-    args = parser.parse_args()
-
-    if not os.path.exists(args.checkpoint_dir):
-        os.makedirs(args.checkpoint_dir, exist_ok=True)
-
-    main(args)
+    main()

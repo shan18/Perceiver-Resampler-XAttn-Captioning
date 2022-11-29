@@ -5,9 +5,12 @@ from einops import rearrange, repeat
 from einops_exts import rearrange_many
 from torch import einsum, nn
 
+from .base_model import BaseModel
+
 
 class SquaredReLU(nn.Module):
     """Squared ReLU activation function"""
+
     def __init__(self):
         super().__init__()
 
@@ -16,9 +19,11 @@ class SquaredReLU(nn.Module):
 
 
 class PerceiverAttentionLayer(nn.Module):
+    """Perceiver Attention Layer"""
+
     def __init__(self, dim: int, dim_head: int = 64, heads: int = 8):
         super().__init__()
-        self.scale = dim_head ** -0.5
+        self.scale = dim_head**-0.5
         self.heads = heads
         self.dim_head = dim_head
         inner_dim = dim_head * heads
@@ -82,7 +87,9 @@ class PerceiverAttentionLayer(nn.Module):
         return self.to_out(out)
 
 
-class PerceiverResampler(nn.Module):
+class PerceiverResampler(BaseModel):
+    """Perceiver Resampler with multi-head attention layer"""
+
     def __init__(
         self,
         dim: int,
@@ -93,33 +100,44 @@ class PerceiverResampler(nn.Module):
         num_time_embeds: int = 4,
         ff_mult: int = 4,
         activation: str = 'gelu',
+        trainable: bool = True,
+        device: str = 'cpu'
     ):
-        super().__init__()
+        super().__init__(trainable)
 
         self.dim = dim
         self.num_queries = num_latents
+        self.device = device
+        self.latents = nn.Parameter(torch.randn(num_latents, dim))  # type: ignore[reportPrivateUsage]
 
-        self.latents = nn.Parameter(torch.randn(num_latents, dim))
-
-        self.time_pos_emb = nn.Parameter(torch.randn(num_time_embeds, 1, dim))
+        self.time_pos_emb = nn.Parameter(torch.randn(num_time_embeds, 1, dim))  # type: ignore[reportPrivateUsage]
 
         self.layers = nn.ModuleList([])
         for _ in range(depth):
-            self.layers.append(nn.ModuleList([
-                PerceiverAttentionLayer(dim=dim, dim_head=dim_head, heads=heads),
-                self.feed_forward_layer(dim=dim, mult=ff_mult, activation=activation)
-            ]))
+            self.layers.append(
+                nn.ModuleList(
+                    [
+                        PerceiverAttentionLayer(dim=dim, dim_head=dim_head, heads=heads),
+                        self.feed_forward_layer(dim=dim, mult=ff_mult, activation=activation),
+                    ]
+                )
+            )
 
         # Layer normalization takes as input the query vector length
         self.norm = nn.LayerNorm(dim)
 
+        self._update_trainable_state()
+
+    def get_input_shape(self, batch_size: int = 16, n_frames: int = 75, n_features: int = 50):
+        return (batch_size, n_frames, n_features, self.dim)
+
+    def get_output_shape(self, batch_size: int = 16, n_frames: int = 75):
+        return (batch_size, n_frames, self.num_queries, self.dim)
+
     def feed_forward_layer(self, dim: int, mult: int = 4, activation: str = 'gelu'):
         """Feed forward layer with given activation function"""
-        activations = dict(
-            gelu=nn.GELU,
-            sqrelu=SquaredReLU,
-            relu=nn.ReLU
-        )
+
+        activations = dict(gelu=nn.GELU, sqrelu=SquaredReLU, relu=nn.ReLU)
         assert activation in activations, f'activation can only be one of {activations.keys()}'
 
         inner_dim = int(dim * mult)
@@ -127,29 +145,36 @@ class PerceiverResampler(nn.Module):
             nn.LayerNorm(dim),
             nn.Linear(dim, inner_dim, bias=False),
             activations[activation](),
-            nn.Linear(inner_dim, dim, bias=False)
+            nn.Linear(inner_dim, dim, bias=False),
         )
 
-    def forward(self, x_f):
+    def forward(self, x_f, video_lengths):
         """Run perceiver resampler on the input visual embeddings
 
         Args:
             x_f: Input visual embeddings of shape (batch_size, n_features, d_visual)
                 or (batch_size, n_frames, n_features, d_visual)
-
+            video_lengths: Length of Input visual embeddings of shape (batch_size)    
         Returns:
             Input features of shape (batch_size, T, num_queries, d_visual)
         """
-        assert x_f.ndim == 4
-
+        assert x_f.ndim == 4        
         batch_size = x_f.shape[0]
         timesteps = x_f.shape[1]
         dim = x_f.shape[3]
+        max_video_len = max(video_lengths)        
+        assert dim == self.dim        
 
-        assert dim == self.dim
-
-        # Add time embeddings to every visual feature of a frame
-        x_f = x_f + self.time_pos_emb[:timesteps]
+        #generates a full matrix with sequential numbers, on_device to support comparision with video_lengths in the next step
+        mask = torch.arange(1, max_video_len+1).repeat(batch_size,1).to(self.device)   #(batch_size, max_video_len)          
+        #subtract the length from the sequence and put 1s on places where the value is negative
+        mask = torch.where(mask<=video_lengths.repeat(max_video_len,1).T, 1, 0) #(batch_size, max_video_len)          
+        #to match embeddings dimension        
+        mask = (mask.unsqueeze(2).unsqueeze(3).repeat(1,1,1,self.dim)) #(batch_size, max_video_len, 1, dim)        
+        
+        # Add time embeddings to every visual feature of a frame according to their lengths
+        # expand doesn't create a copy like repeat
+        x_f = x_f + mask*(self.time_pos_emb[:max_video_len].unsqueeze(0).expand(batch_size,-1,-1,-1))  #(batch_size, max_video_len, 1, dim)*(batch_size, max_video_len, 1, dim)
 
         # Flatten the frames
         x_f = rearrange(x_f, 'b T n d -> b (T n) d')
@@ -158,7 +183,7 @@ class PerceiverResampler(nn.Module):
         x = repeat(self.latents, 'q d -> b q d', b=batch_size)
 
         # Apply attention and feed forward layer
-        for attn, ffw in self.layers:
+        for attn, ffw in self.layers:  # type: ignore[reportGeneralTypeIssues]
             x = x + attn(x_f, x)
             x = x + ffw(x)
 

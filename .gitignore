@@ -10,3 +10,5 @@ data/test/
 *.mp4
 *.json
 shell.py
+slurm/
+exp_logs/

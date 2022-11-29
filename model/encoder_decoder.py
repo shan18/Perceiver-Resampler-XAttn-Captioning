@@ -1,34 +1,35 @@
+# type: ignore[reportGeneralTypeIssues]
+
 from einops import rearrange
-from torch import nn
+from omegaconf import DictConfig
 from transformers import CLIPVisionModel, GPT2LMHeadModel, logging
 
+from .base_model import BaseModel
 from .resampler import PerceiverResampler
 
 
-class VisionEncoder(nn.Module):
+class VisionEncoder(BaseModel):
+    """Model to encode the video frames.
 
-    def __init__(self, config):
-        super().__init__()
+    Args:
+        pretrained_name: name of the pretrained model from huggingface
+        trainable: whether the model is trainable
+    """
 
-        # This disables the logging temporarily
+    def __init__(self, pretrained_name: str, trainable: bool):
+        super().__init__(trainable)
+
         logging.set_verbosity_error()
-        self.video_encoder = CLIPVisionModel.from_pretrained('openai/clip-vit-base-patch32')
+        self._model = CLIPVisionModel.from_pretrained(pretrained_name)
         logging.set_verbosity_warning()
-        resampler_config   = config.resampler
-        self.resampler = PerceiverResampler(
-            dim=768,
-            depth=resampler_config.depth,
-            dim_head=resampler_config.dim_head,
-            heads=resampler_config.heads,
-            num_latents=resampler_config.num_latents,
-            num_time_embeds=500,  # TODO: Need to give dynamic value based on number of frames.
-            ff_mult=4,
-            activation='gelu',
-        )
 
-    def _freeze_params(self):
-        for param in self.video_encoder.parameters():
-            param.requires_grad = False
+        self._update_trainable_state()
+
+    def get_input_shape(self, batch_size: int = 16, timesteps: int = 75):
+        return (batch_size, timesteps, 3, 224, 224)
+
+    def get_output_shape(self, batch_size: int = 16):
+        return (batch_size, 50, 768)
 
     def forward(self, video):
         """
@@ -36,37 +37,73 @@ class VisionEncoder(nn.Module):
             video: Batch of video frames with shape (batch_size, timesteps, 3, 224, 224)
 
         Returns:
-            Video embeddings with shape (batch_size, dim_head, 768)
+            Video embeddings with shape (batch_size, timesteps, hidden_dim, 768)
         """
         batch_size = video.shape[0]
 
         # Get embeddings for each frame in the video
         video = rearrange(video, 'b t ... -> (b t) ...')
-        embeddings = self.video_encoder(pixel_values=video).last_hidden_state
+        embeddings = self._model(pixel_values=video).last_hidden_state
         embeddings = rearrange(embeddings, '(b t) ... -> b t ...', b=batch_size)
 
-        # Pass the video embeddings through the perceiver resampler
-        return self.resampler(embeddings)
+        return embeddings
 
 
-class VideoTextModel(nn.Module):
+class TextGenerator(BaseModel):
+    """Model to generate the text.
 
-    def __init__(self, config):
-        super().__init__()
-        self.vision_encoder = VisionEncoder(config)
-        self.text_generator = GPT2LMHeadModel.from_pretrained('gpt2')
-        self._freeze_params()
+    Args:
+        pretrained_name: name of the pretrained model from huggingface
+        trainable: whether the model is trainable
+    """
 
-    def _freeze_params(self):
-        self.vision_encoder._freeze_params()
+    def __init__(self, pretrained_name: str, trainable: bool):
+        super().__init__(trainable)
+        self._model = GPT2LMHeadModel.from_pretrained(pretrained_name)
+        self._update_trainable_state()
 
-        # Freeze text generator
-        for param in self.text_generator.parameters():
-            param.requires_grad = False
+    def get_input_shape(self, batch_size: int = 16, timesteps: int = 75):
+        return (batch_size, timesteps, self._model.transformer.embed_dim), (batch_size, timesteps)
 
-    def forward(self, video, text_attention_mask):
+    def get_output_shape(self, batch_size: int = 16, timesteps: int = 75):
+        return (batch_size, timesteps, self._model.lm_head.out_features)
+
+    def forward(self, input_embeddings):
+        """
+        Args:
+            input_embeddings: video embeddings with shape (batch_size, seq_length, 768)
+
+        Returns:
+            Logits of the output transcript
+        """
+        return self._model(inputs_embeds=input_embeddings).logits
+
+
+class VideoTextModel(BaseModel):
+    """Model to encode the video frames and generate the text.
+
+    Args:
+        vision_encoder_cfg: config for the vision encoder
+        resampler_cfg: config for the resampler
+        text_generator_cfg: config for the text generator
+        device: current device
+    """
+
+    def __init__(self, vision_encoder_cfg: DictConfig, resampler_cfg: DictConfig, text_generator_cfg: DictConfig, device: str='cpu'):
+        super().__init__(True)
+        self.device = device #not needed to assign to self, keeping for consistency
+        self.vision_encoder = VisionEncoder(**vision_encoder_cfg)
+        self.resampler = PerceiverResampler(self.vision_encoder.get_output_shape()[-1], **resampler_cfg, device=self.device)
+        self.text_generator = TextGenerator(**text_generator_cfg)
+
+    def forward(self, video, video_lengths):
+        # Encode video
         video_embeddings = self.vision_encoder(video)
-        text_output = self.text_generator(
-            inputs_embeds=video_embeddings, attention_mask=text_attention_mask
-        ).logits
+
+        # Resample video embeddings
+        resampled_embeddings = self.resampler(video_embeddings, video_lengths)
+
+        # Generate text
+        text_output = self.text_generator(resampled_embeddings)
+
         return text_output

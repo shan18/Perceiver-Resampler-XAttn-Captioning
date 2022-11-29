@@ -1,5 +1,74 @@
-resampler:
+# Config to train the Multilingual-Sign-Language-Translation model on the SP-10 dataset.
+########################################################################################
+
+name: mlslt
+
+model:
+  vision:
+    pretrained_name: openai/clip-vit-base-patch32 # Pre-trained weights of the vision encoder found on huggingface
+    trainable: false
+
+  resampler:
     depth: 6
     dim_head: 64
     heads: 8
     num_latents: 64
+    num_time_embeds: 500
+    ff_mult: 4
+    activation: gelu
+    trainable: true
+
+  text:
+    pretrained_name: gpt2 # Pre-trained weights of the text generator found on huggingface
+    trainable: false
+
+  optimizer:
+    name: adamw # Optimizer to use for training. Can be ['adamw', 'adam']
+    lr: 0.001
+    betas: [0.9, 0.98]
+    weight_decay: 1e-3
+
+    # scheduler setup
+    scheduler:
+      name: CosineAnnealing
+      warmup_steps: null
+      warmup_ratio: 0.1
+      min_lr: 1e-6
+
+dataset:
+  train_ds:
+    video_dir: ???
+    json_path: ???
+    batch_size: 16
+    num_workers: 4
+    shuffle: true
+
+  validation_ds:
+    video_dir: ???
+    json_path: ???
+    batch_size: 16
+    num_workers: 4
+    shuffle: true
+
+  test_ds:
+    video_dir: ???
+    json_path: ???
+    batch_size: 16
+    num_workers: 4
+    shuffle: true
+
+trainer:
+  epochs: 40
+  exp_dir: null
+  exp_name: ${name}
+  checkpoint_callback_params:
+    monitor: val_loss
+    mode: min
+    save_top_k: 5
+
+hydra:
+  run:
+    dir: ${trainer.exp_dir}/${trainer.exp_name}
+  sweep:
+    dir: ${hydra.run.dir}
+    subdir: ${hydra.job.num}
