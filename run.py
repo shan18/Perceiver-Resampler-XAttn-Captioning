@@ -76,18 +76,19 @@ def main(cfg):
 
     # Create dataloaders
     print('Creating dataloaders...')
-    _, train_loader = create_dataset(**cfg.dataset.train_ds, max_length=cfg.model.resampler.num_latents)
+    train_dataset, train_loader = create_dataset(**cfg.dataset.train_ds, max_length=cfg.model.resampler.num_latents)
     _, dev_loader = create_dataset(**cfg.dataset.validation_ds, max_length=cfg.model.resampler.num_latents)
 
     # Create model
     print('Creating model...')
-    model = VideoTextModel(cfg.model.vision, cfg.model.resampler, cfg.model.text, device).to(device)
+    model = VideoTextModel(cfg.model.vision, cfg.model.resampler, cfg.model.text).to(device)
     model.summary()
 
     # Create trainer
     print('Creating trainer...')
     trainer = Trainer(
         model,
+        train_dataset.tokenizer,
         os.path.join(cfg.trainer.exp_dir, cfg.trainer.exp_name),
         cfg.trainer.checkpoint_callback_params,
         device=device,

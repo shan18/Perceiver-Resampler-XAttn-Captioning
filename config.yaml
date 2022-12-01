@@ -62,8 +62,8 @@ trainer:
   exp_dir: null
   exp_name: ${name}
   checkpoint_callback_params:
-    monitor: val_loss
-    mode: min
+    monitor: val_bleu # Can be ['train_loss', 'val_loss', 'val_bleu']
+    mode: max
     save_top_k: 5
 
 hydra:
