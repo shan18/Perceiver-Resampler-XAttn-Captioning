@@ -36,7 +36,7 @@ class Trainer:
 
     def _prepare_for_training(self, optimizer_cfg, num_steps_per_epoch, epochs):
         # Create the loss function
-        self.criterion = nn.CrossEntropyLoss()
+        self.criterion = nn.CrossEntropyLoss(ignore_index=self.tokenizer.pad_token_id)
 
         # Prepare the optimizer
         assert optimizer_cfg['name'] in ['adamw', 'adam'], 'Optimizer must be either AdamW or Adam'

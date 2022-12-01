@@ -1,5 +1,3 @@
-# type: ignore[reportGeneralTypeIssues]
-
 from einops import rearrange
 from omegaconf import DictConfig
 from transformers import CLIPVisionModel, GPT2LMHeadModel, logging
