@@ -81,7 +81,7 @@ def main(cfg):
 
     # Create model
     print('Creating model...')
-    model = VideoTextModel(cfg.model.vision, cfg.model.resampler, cfg.model.text, device).to(device)
+    model = VideoTextModel(cfg.model.vision, cfg.model.resampler, cfg.model.text).to(device)
     model.summary()
 
     # Create trainer

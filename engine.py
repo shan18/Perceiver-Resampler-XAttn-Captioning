@@ -1,15 +1,14 @@
 import os
 from typing import Union
 
+import evaluate as hf_evaluate
 import torch
-import evaluate
 from einops import rearrange
 from omegaconf import DictConfig
 from torch import nn
 from torch.optim import Adam, AdamW
 from torch.utils.data import DataLoader
-from transformers import get_cosine_schedule_with_warmup
-from transformers import GPT2Tokenizer
+from transformers import GPT2Tokenizer, get_cosine_schedule_with_warmup
 
 from utils import CheckpointManager, ProgressBar
 
@@ -79,12 +78,13 @@ class Trainer:
     def train(self, loader):
         self.model.train()
         pbar = ProgressBar(target=len(loader), width=8)
-        for batch_idx, (video, video_lengths, transcript) in enumerate(loader):
+        for batch_idx, (video, video_length, transcript) in enumerate(loader):
             video = video.to(self.device)
             transcript = transcript.to(self.device)
-            video_lengths = video_lengths.to(self.device)
+            video_length = video_length.to(self.device)
+
             self.optimizer.zero_grad()
-            outputs = self.model(video, video_lengths)
+            outputs = self.model(video, video_length)
 
             # Compute the loss
             outputs = rearrange(outputs, 'b t d -> b d t')
@@ -109,11 +109,12 @@ class Trainer:
         self.model.eval()
         eval_loss = 0
         with torch.no_grad():
-            for video, video_lengths, transcript in loader:
+            for video, video_length, transcript in loader:
                 video = video.to(self.device)
                 transcript = transcript.to(self.device)
-                video_lengths = video_lengths.to(self.device)
-                outputs = self.model(video, video_lengths)
+                video_length = video_length.to(self.device)
+
+                outputs = self.model(video, video_length)
 
                 outputs = rearrange(outputs, 'b t d -> b d t')
                 loss = self.criterion(outputs, transcript)
@@ -127,13 +128,12 @@ class Trainer:
                 target = [[t.strip()] for t in target]
 
                 # Compute bleu score
-                bleu = evaluate.load("bleu")
+                bleu = hf_evaluate.load("bleu")
                 results = bleu.compute(predictions=preds, references=target)
                 print(f'results:{results}')
 
         # Compute the average loss
         eval_loss /= len(loader)
-
         print(f'{"Validation" if data_type == "dev" else "Test"} set: ' f'Average loss: {eval_loss:.4f}\n')
 
         return eval_loss

@@ -89,19 +89,18 @@ class VideoTextModel(BaseModel):
         device: current device
     """
 
-    def __init__(self, vision_encoder_cfg: DictConfig, resampler_cfg: DictConfig, text_generator_cfg: DictConfig, device: str='cpu'):
+    def __init__(self, vision_encoder_cfg: DictConfig, resampler_cfg: DictConfig, text_generator_cfg: DictConfig):
         super().__init__(True)
-        self.device = device #not needed to assign to self, keeping for consistency
         self.vision_encoder = VisionEncoder(**vision_encoder_cfg)
-        self.resampler = PerceiverResampler(self.vision_encoder.get_output_shape()[-1], **resampler_cfg, device=self.device)
+        self.resampler = PerceiverResampler(self.vision_encoder.get_output_shape()[-1], **resampler_cfg)
         self.text_generator = TextGenerator(**text_generator_cfg)
 
-    def forward(self, video, video_lengths):
+    def forward(self, video, video_length):
         # Encode video
         video_embeddings = self.vision_encoder(video)
 
         # Resample video embeddings
-        resampled_embeddings = self.resampler(video_embeddings, video_lengths)
+        resampled_embeddings = self.resampler(video_embeddings, video_length)
 
         # Generate text
         text_output = self.text_generator(resampled_embeddings)

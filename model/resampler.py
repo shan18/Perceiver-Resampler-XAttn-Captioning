@@ -100,16 +100,14 @@ class PerceiverResampler(BaseModel):
         num_time_embeds: int = 4,
         ff_mult: int = 4,
         activation: str = 'gelu',
-        trainable: bool = True,
-        device: str = 'cpu'
+        trainable: bool = True
     ):
         super().__init__(trainable)
 
         self.dim = dim
         self.num_queries = num_latents
-        self.device = device
-        self.latents = nn.Parameter(torch.randn(num_latents, dim))  # type: ignore[reportPrivateUsage]
 
+        self.latents = nn.Parameter(torch.randn(num_latents, dim))  # type: ignore[reportPrivateUsage]
         self.time_pos_emb = nn.Parameter(torch.randn(num_time_embeds, 1, dim))  # type: ignore[reportPrivateUsage]
 
         self.layers = nn.ModuleList([])
@@ -148,33 +146,31 @@ class PerceiverResampler(BaseModel):
             nn.Linear(inner_dim, dim, bias=False),
         )
 
-    def forward(self, x_f, video_lengths):
+    def forward(self, x_f, video_length):
         """Run perceiver resampler on the input visual embeddings
 
         Args:
-            x_f: Input visual embeddings of shape (batch_size, n_features, d_visual)
-                or (batch_size, n_frames, n_features, d_visual)
-            video_lengths: Length of Input visual embeddings of shape (batch_size)    
+            x_f: Input visual embeddings of shape (batch_size, n_frames, n_features, d_visual)
+            video_length: Length of Input visual embeddings of shape (batch_size,)
+
         Returns:
             Input features of shape (batch_size, T, num_queries, d_visual)
         """
-        assert x_f.ndim == 4        
-        batch_size = x_f.shape[0]
-        timesteps = x_f.shape[1]
-        dim = x_f.shape[3]
-        max_video_len = max(video_lengths)        
-        assert dim == self.dim        
+        assert x_f.ndim == 4
 
-        #generates a full matrix with sequential numbers, on_device to support comparision with video_lengths in the next step
-        mask = torch.arange(1, max_video_len+1).repeat(batch_size,1).to(self.device)   #(batch_size, max_video_len)          
-        #subtract the length from the sequence and put 1s on places where the value is negative
-        mask = torch.where(mask<=video_lengths.repeat(max_video_len,1).T, 1, 0) #(batch_size, max_video_len)          
-        #to match embeddings dimension        
-        mask = (mask.unsqueeze(2).unsqueeze(3).repeat(1,1,1,self.dim)) #(batch_size, max_video_len, 1, dim)        
-        
-        # Add time embeddings to every visual feature of a frame according to their lengths
-        # expand doesn't create a copy like repeat
-        x_f = x_f + mask*(self.time_pos_emb[:max_video_len].unsqueeze(0).expand(batch_size,-1,-1,-1))  #(batch_size, max_video_len, 1, dim)*(batch_size, max_video_len, 1, dim)
+        batch_size, _, _, dim = x_f.shape
+        max_video_len = max(video_length)
+
+        assert dim == self.dim
+
+        # Create mask for removing the position embeddings for the padded frames
+        mask = torch.arange(1, max_video_len + 1).repeat(batch_size, 1).to(x_f.device)   # [batch_size, max_video_len]
+        mask = torch.where(mask <= video_length.repeat(max_video_len, 1).T, 1, 0)  # [batch_size, max_video_len]
+        mask = mask.unsqueeze(2).unsqueeze(3).repeat(1, 1, 1, self.dim)  # [batch_size, max_video_len, 1, dim]
+
+        # Mask the position embeddings for the padded frames
+        time_pos_emb = self.time_pos_emb[:max_video_len].unsqueeze(0).expand(batch_size, -1, -1, -1)  # [batch_size, max_video_len, 1, dim]
+        x_f = x_f + time_pos_emb * mask
 
         # Flatten the frames
         x_f = rearrange(x_f, 'b T n d -> b (T n) d')
