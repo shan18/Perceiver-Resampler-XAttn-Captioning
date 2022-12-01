@@ -11,3 +11,4 @@ black
 isort
 omegaconf
 hydra-core
+evaluate

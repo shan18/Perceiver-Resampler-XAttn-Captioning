@@ -2,12 +2,14 @@ import os
 from typing import Union
 
 import torch
+import evaluate
 from einops import rearrange
 from omegaconf import DictConfig
 from torch import nn
 from torch.optim import Adam, AdamW
 from torch.utils.data import DataLoader
 from transformers import get_cosine_schedule_with_warmup
+from transformers import GPT2Tokenizer
 
 from utils import CheckpointManager, ProgressBar
 
@@ -25,6 +27,8 @@ class Trainer:
             self.model, os.path.join(self.log_dir, 'checkpoints'), **checkpoint_callback_params
         )
         self.device = device
+        self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
+        self.tokenizer.pad_token = self.tokenizer.eos_token
 
     def _prepare_for_training(self, optimizer_cfg, num_steps_per_epoch, epochs):
         # Create the loss function
@@ -114,6 +118,18 @@ class Trainer:
                 outputs = rearrange(outputs, 'b t d -> b d t')
                 loss = self.criterion(outputs, transcript)
                 eval_loss += loss.item()
+
+                # Inference, Greedy search
+                outputs_ids = torch.argmax(outputs, dim=1)
+                preds = self.tokenizer.batch_decode(outputs_ids, skip_special_tokens=True)
+                preds = [pred.strip() for pred in preds]
+                target = self.tokenizer.batch_decode(transcript, skip_special_tokens=True)
+                target = [[t.strip()] for t in target]
+
+                # Compute bleu score
+                bleu = evaluate.load("bleu")
+                results = bleu.compute(predictions=preds, references=target)
+                print(f'results:{results}')
 
         # Compute the average loss
         eval_loss /= len(loader)
