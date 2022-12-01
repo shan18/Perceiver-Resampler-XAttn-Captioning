@@ -24,7 +24,7 @@ class MLSLTDataset(Dataset):
         self.image_processor = CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')
 
         self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-        self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.tokenizer.pad_token = -1
 
     def _get_labels(self, json_path):
         """Reads the json file and creates a label dictionary"""
@@ -47,7 +47,7 @@ class MLSLTDataset(Dataset):
         # Process video
         video, _, _ = read_video(video_path, output_format='TCHW', pts_unit='sec')
         video = self.image_processor(images=[x for x in video], return_tensors='pt')['pixel_values']
-        video_length = torch.tensor(video.shape[0])  # type: ignore[reportGeneralTypeIssues]
+        video_length = torch.tensor(video.shape[0])
 
         # Process text
         transcript = self.tokenizer(

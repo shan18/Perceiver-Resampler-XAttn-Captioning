@@ -179,7 +179,7 @@ class PerceiverResampler(BaseModel):
         x = repeat(self.latents, 'q d -> b q d', b=batch_size)
 
         # Apply attention and feed forward layer
-        for attn, ffw in self.layers:  # type: ignore[reportGeneralTypeIssues]
+        for attn, ffw in self.layers:
             x = x + attn(x_f, x)
             x = x + ffw(x)
 
