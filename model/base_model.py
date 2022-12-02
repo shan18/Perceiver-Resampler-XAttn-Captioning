@@ -1,3 +1,4 @@
+import torch
 from torch import nn
 from torchinfo import summary
 
@@ -6,7 +7,6 @@ class BaseModel(nn.Module):
     def __init__(self, trainable: bool):
         super().__init__()
         self.trainable = trainable
-        self._model = None
 
     def _update_trainable_state(self):
         """Freeze or unfreeze the model"""
@@ -34,3 +34,9 @@ class BaseModel(nn.Module):
 
     def forward(self, *args, **kwargs):
         raise NotImplementedError
+
+    def save_weights(self, path):
+        torch.save(self.state_dict(), path)
+
+    def load_weights(self, path):
+        self.load_state_dict(torch.load(path))

@@ -63,4 +63,4 @@ class CheckpointManager:
         if len(self.recent_checkpoints) > self.save_top_k:
             oldest_ckpt_file = self.recent_checkpoints.pop(0)
             os.remove(oldest_ckpt_file)
-        torch.save(self.model.state_dict(), self.recent_checkpoints[-1])
+        self.model.save_weights(self.recent_checkpoints[-1])
