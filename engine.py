@@ -1,5 +1,5 @@
 import os
-from typing import Union
+from typing import Optional, Union
 
 import evaluate as hf_evaluate
 import torch
@@ -154,11 +154,16 @@ class Trainer:
         return eval_loss, bleu_score
 
     def fit(
-        self, train_loader: DataLoader, dev_loader: DataLoader, optimizer_cfg: Union[dict, DictConfig], epochs: int
+        self,
+        train_loader: DataLoader,
+        dev_loader: DataLoader,
+        optimizer_cfg: Union[dict, DictConfig],
+        epochs: int,
+        start_epoch: Optional[int] = 1,
     ):
         self._prepare_for_training(optimizer_cfg, len(train_loader), epochs)
 
-        for epoch in range(1, epochs + 1):
+        for epoch in range(start_epoch, epochs + 1):
             print(f'\nEpoch {epoch}:')
             train_loss = self.train(train_loader)
             eval_loss, eval_bleu = self.evaluate(dev_loader)
