@@ -1,6 +1,7 @@
 import os
 
 import torch
+from omegaconf import DictConfig
 from torch import nn
 
 
@@ -10,12 +11,23 @@ class CheckpointManager:
     Args:
         model: model to be tracked
         checkpoint_dir: directory to save the checkpoints
+        exp_name: name of the experiment
         monitor: metric to monitor
         mode: whether to minimize or maximize the metric
         save_top_k: number of checkpoints to save
     """
 
-    def __init__(self, model: nn.Module, checkpoint_dir: str, monitor: str, mode: str, save_top_k: int):
+    def __init__(
+        self,
+        model: nn.Module,
+        checkpoint_dir: str,
+        exp_name: str,
+        monitor: str,
+        mode: str,
+        save_top_k: int,
+        optimizer: torch.optim.Optimizer = None,
+        scheduler: torch.optim.lr_scheduler._LRScheduler = None,
+    ):
         assert monitor in [
             'train_loss',
             'val_loss',
@@ -24,9 +36,12 @@ class CheckpointManager:
 
         self.model = model
         self.checkpoint_dir = checkpoint_dir
+        self.exp_name = exp_name
         self.monitor = monitor
         self.mode = mode
         self.save_top_k = save_top_k
+        self.optimizer = optimizer
+        self.scheduler = scheduler
         self.recent_checkpoints = []
 
         self.metrics = {'train_loss': [], 'val_loss': [], 'val_bleu': []}
@@ -58,9 +73,23 @@ class CheckpointManager:
 
     def save_checkpoint(self, epoch: int, score: float):
         self.recent_checkpoints.append(
-            os.path.join(self.checkpoint_dir, f'ckpt-epoch_{epoch}-{self.monitor}_{score:.4f}.pt')
+            os.path.join(self.checkpoint_dir, f'{self.exp_name}-epoch_{epoch}-{self.monitor}_{score:.4f}.pt')
         )
         if len(self.recent_checkpoints) > self.save_top_k:
             oldest_ckpt_file = self.recent_checkpoints.pop(0)
             os.remove(oldest_ckpt_file)
-        self.model.save_weights(self.recent_checkpoints[-1])
+
+        self.save_state(epoch, self.recent_checkpoints[-1])
+
+    def save_state(self, epoch, path):
+        state_dict = {
+            'epoch': epoch,
+            'model_cfg': self.model.cfg,
+            'model_state_dict': self.model.state_dict(),
+            'optimizer_state_dict': self.optimizer.state_dict(),
+        }
+
+        if self.scheduler is not None:
+            state_dict['scheduler_state_dict'] = self.scheduler.state_dict()
+
+        torch.save(state_dict, path)

@@ -25,7 +25,7 @@ from omegaconf import DictConfig, OmegaConf, open_dict
 
 from dataset import MLSLTDataset
 from engine import Trainer
-from model import VideoTextModel
+from model import build_model
 
 
 def check_mandatory_args(cfg: DictConfig):
@@ -42,6 +42,13 @@ def setup_log_dir(cfg: DictConfig):
     if cfg.trainer.exp_dir is None:
         with open_dict(cfg.trainer):
             cfg.trainer.exp_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'exp_logs')
+
+
+def restore_cfg(cfg: DictConfig, checkpoint_path: str):
+    """Restores parts of config from the checkpoint."""
+    with open_dict(cfg.model):
+        model_cfg = torch.load(checkpoint_path, map_location='cpu')['model_cfg']
+        cfg.model = model_cfg
 
 
 def create_dataset(video_dir: str, json_path: str, batch_size: int, num_workers: int, shuffle: bool, max_length: int):
@@ -66,37 +73,54 @@ def create_dataset(video_dir: str, json_path: str, batch_size: int, num_workers:
 
 @hydra.main(version_base=None, config_path=os.path.dirname(os.path.abspath(__file__)), config_name='config.yaml')
 def main(cfg):
+    assert cfg.mode == 'train' or cfg.pretrained_name is not None, 'Need to specify the checkpoint path in test mode'
+
     check_mandatory_args(cfg.dataset.train_ds)
     check_mandatory_args(cfg.dataset.validation_ds)
     setup_log_dir(cfg)
+
+    if cfg.pretrained_name is not None:
+        print('Restoring config from checkpoint:', cfg.pretrained_name)
+        restore_cfg(cfg, cfg.pretrained_name)
 
     print(f'Hydra config:\n{OmegaConf.to_yaml(cfg)}')
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
+    # Build model
+    print('Creating model...')
+    model = build_model(cfg.model, cfg.pretrained_name, device)
+    model.summary()
+
     # Create dataloaders
     print('Creating dataloaders...')
-    train_dataset, train_loader = create_dataset(**cfg.dataset.train_ds, max_length=cfg.model.resampler.num_latents)
-    _, dev_loader = create_dataset(**cfg.dataset.validation_ds, max_length=cfg.model.resampler.num_latents)
-
-    # Create model
-    print('Creating model...')
-    model = VideoTextModel(cfg.model.vision, cfg.model.resampler, cfg.model.text).to(device)
-    model.summary()
+    tokenizer = None
+    if cfg.mode == 'train':
+        train_dataset, train_loader = create_dataset(**cfg.dataset.train_ds, max_length=cfg.model.resampler.num_latents)
+        _, dev_loader = create_dataset(**cfg.dataset.validation_ds, max_length=cfg.model.resampler.num_latents)
+        tokenizer = train_dataset.tokenizer
+    else:
+        test_dataset, test_loader = create_dataset(**cfg.dataset.test_ds, max_length=cfg.model.resampler.num_latents)
+        tokenizer = test_dataset.tokenizer
 
     # Create trainer
     print('Creating trainer...')
     trainer = Trainer(
         model,
-        train_dataset.tokenizer,
-        os.path.join(cfg.trainer.exp_dir, cfg.trainer.exp_name),
+        tokenizer,
+        cfg.trainer.exp_dir,
+        cfg.trainer.exp_name,
         cfg.trainer.checkpoint_callback_params,
         device=device,
     )
 
-    # Train
-    print('Training...')
-    trainer.fit(train_loader, dev_loader, cfg.model.optimizer, cfg.trainer.epochs)
+    # Train and evaluate
+    if cfg.mode == 'train':
+        print('Training...')
+        trainer.fit(train_loader, dev_loader, cfg.model.optimizer, cfg.trainer.epochs)  # type: ignore[reportUnboundVariable]
+    else:
+        print('Evaluating...')
+        trainer.evaluate(test_loader, data_type='test')  # type: ignore[reportUnboundVariable]
 
 
 if __name__ == '__main__':
