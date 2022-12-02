@@ -19,22 +19,22 @@ class Trainer:
         model: nn.Module,
         tokenizer: PreTrainedTokenizer,
         log_dir: str,
+        exp_name: str,
         checkpoint_callback_params: Union[dict, DictConfig],
-        device: str = 'cpu',
+        device: Optional[str] = 'cpu',
     ):
         self.device = device
         self.model = model.to(device)
 
-        self.log_dir = log_dir
+        self.exp_name = exp_name
+        self.checkpoint_callback_params = checkpoint_callback_params
+        self.log_dir = os.path.join(log_dir, exp_name)
         os.makedirs(self.log_dir, exist_ok=True)
-        self.ckpt_manager = CheckpointManager(
-            self.model, os.path.join(self.log_dir, 'checkpoints'), **checkpoint_callback_params
-        )
 
         self.tokenizer = tokenizer
         self.bleu_fn = hf_evaluate.load('bleu')
 
-    def _prepare_for_training(self, optimizer_cfg, num_steps_per_epoch, epochs):
+    def _prepare_for_training(self, optimizer_cfg, num_steps_per_epoch, epochs, restore_ckpt=None):
         # Create the loss function
         self.criterion = nn.CrossEntropyLoss(ignore_index=self.tokenizer.pad_token_id)
 
@@ -80,6 +80,32 @@ class Trainer:
                     num_training_steps=total_steps,
                 )
 
+        # Restore states from checkpoint
+        start_epoch = 0
+        if restore_ckpt is not None:
+            start_epoch = self._restore_state(restore_ckpt)
+
+        # Create checkpoint manager
+        self.ckpt_manager = CheckpointManager(
+            self.model,
+            os.path.join(self.log_dir, 'checkpoints'),
+            self.exp_name,
+            **self.checkpoint_callback_params,
+            optimizer=self.optimizer,
+            scheduler=self.scheduler,
+        )
+
+        return start_epoch
+
+    def _restore_state(self, restore_ckpt: str):
+        checkpoint = torch.load(restore_ckpt, map_location=self.device)
+
+        self.optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        if self.scheduler is not None:
+            self.scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+
+        return checkpoint['epoch'] + 1
+
     def train(self, loader):
         self.model.train()
         pbar = ProgressBar(target=len(loader), width=8)
@@ -102,6 +128,10 @@ class Trainer:
 
             # Update progress bar
             pbar.update(batch_idx, values=[('Loss', round(loss.item(), 4))])
+
+            # FIXME: Remove this
+            if batch_idx == 2:
+                break
 
         pbar.add(
             1,
@@ -141,6 +171,9 @@ class Trainer:
                 target = self.tokenizer.batch_decode(transcript, skip_special_tokens=True)
                 targets.extend([[t.strip()] for t in target])
 
+                # FIXME: Remove this
+                break
+
         # Compute the average loss and bleu score
         eval_loss /= len(loader)
         bleu_score = self.bleu_fn.compute(predictions=predictions, references=targets)['bleu']  # type: ignore[reportOptionalSubscript]
@@ -157,11 +190,11 @@ class Trainer:
         self,
         train_loader: DataLoader,
         dev_loader: DataLoader,
-        optimizer_cfg: Union[dict, DictConfig],
+        optimizer_cfg: DictConfig,
         epochs: int,
-        start_epoch: Optional[int] = 1,
+        restore_ckpt: Optional[str] = None,
     ):
-        self._prepare_for_training(optimizer_cfg, len(train_loader), epochs)
+        start_epoch = self._prepare_for_training(optimizer_cfg, len(train_loader), epochs, restore_ckpt=restore_ckpt)
 
         for epoch in range(start_epoch, epochs + 1):
             print(f'\nEpoch {epoch}:')

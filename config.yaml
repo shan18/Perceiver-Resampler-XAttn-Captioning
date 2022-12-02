@@ -2,6 +2,9 @@
 ########################################################################################
 
 name: mlslt
+mode: train # train or test
+
+pretrained_name: null # path to checkpoint. Mandatory for test mode.
 
 model:
   vision:
@@ -50,7 +53,7 @@ dataset:
     num_workers: 4
     shuffle: true
 
-  test_ds:
+  test_ds: # Mandatory for test mode
     video_dir: ???
     json_path: ???
     batch_size: 16

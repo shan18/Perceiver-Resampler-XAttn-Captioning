@@ -1,12 +1,14 @@
 import torch
+from omegaconf import DictConfig
 from torch import nn
 from torchinfo import summary
 
 
 class BaseModel(nn.Module):
-    def __init__(self, trainable: bool):
+    def __init__(self, trainable: bool, cfg: DictConfig = None):
         super().__init__()
         self.trainable = trainable
+        self.cfg = cfg
 
     def _update_trainable_state(self):
         """Freeze or unfreeze the model"""

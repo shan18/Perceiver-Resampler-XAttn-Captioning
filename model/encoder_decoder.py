@@ -84,11 +84,17 @@ class VideoTextModel(BaseModel):
         vision_encoder_cfg: config for the vision encoder
         resampler_cfg: config for the resampler
         text_generator_cfg: config for the text generator
-        device: current device
+        cfg: full model config. Redundant, but useful when saving and restoring the checkpoint
     """
 
-    def __init__(self, vision_encoder_cfg: DictConfig, resampler_cfg: DictConfig, text_generator_cfg: DictConfig):
-        super().__init__(True)
+    def __init__(
+        self,
+        vision_encoder_cfg: DictConfig,
+        resampler_cfg: DictConfig,
+        text_generator_cfg: DictConfig,
+        cfg: DictConfig = None,
+    ):
+        super().__init__(trainable=True, cfg=cfg)
         self.vision_encoder = VisionEncoder(**vision_encoder_cfg)
         self.resampler = PerceiverResampler(self.vision_encoder.get_output_shape()[-1], **resampler_cfg)
         self.text_generator = TextGenerator(**text_generator_cfg)
