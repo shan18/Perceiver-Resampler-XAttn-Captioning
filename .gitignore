@@ -12,3 +12,4 @@ data/test/
 shell.py
 slurm/
 exp_logs/
+config_local.yaml
