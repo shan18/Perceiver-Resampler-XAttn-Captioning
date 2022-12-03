@@ -164,6 +164,8 @@ class Trainer:
                 preds = self.tokenizer.batch_decode(outputs_ids, skip_special_tokens=True)
                 predictions.extend([pred.strip() for pred in preds])
 
+                # Replace the -1 token id with something the tokenizer can decode
+                transcript[transcript == -1] = self.tokenizer.eos_token_id
                 target = self.tokenizer.batch_decode(transcript, skip_special_tokens=True)
                 targets.extend([[t.strip()] for t in target])
 
