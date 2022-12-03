@@ -36,7 +36,7 @@ class Trainer:
 
     def _prepare_for_training(self, optimizer_cfg, num_steps_per_epoch, epochs, restore_ckpt=None):
         # Create the loss function
-        self.criterion = nn.CrossEntropyLoss(ignore_index=self.tokenizer.pad_token_id)
+        self.criterion = nn.CrossEntropyLoss(ignore_index=-1)
 
         # Prepare the optimizer
         assert optimizer_cfg['name'] in ['adamw', 'adam'], 'Optimizer must be either AdamW or Adam'
@@ -129,10 +129,6 @@ class Trainer:
             # Update progress bar
             pbar.update(batch_idx, values=[('Loss', round(loss.item(), 4))])
 
-            # FIXME: Remove this
-            if batch_idx == 2:
-                break
-
         pbar.add(
             1,
             values=[
@@ -170,9 +166,6 @@ class Trainer:
 
                 target = self.tokenizer.batch_decode(transcript, skip_special_tokens=True)
                 targets.extend([[t.strip()] for t in target])
-
-                # FIXME: Remove this
-                break
 
         # Compute the average loss and bleu score
         eval_loss /= len(loader)

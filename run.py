@@ -113,7 +113,9 @@ def main(cfg):
     print('Creating dataloaders...')
     tokenizer = None
     if cfg.mode == 'train':
-        train_dataset, train_loader = create_dataset(**cfg.dataset.train_ds, max_length=cfg.model.resampler.num_latents)
+        train_dataset, train_loader = create_dataset(
+            **cfg.dataset.train_ds, max_length=cfg.model.resampler.num_latents
+        )
         _, dev_loader = create_dataset(**cfg.dataset.validation_ds, max_length=cfg.model.resampler.num_latents)
         tokenizer = train_dataset.tokenizer
     else:
