@@ -97,3 +97,4 @@ class CheckpointManager:
     def save_best_state(self):
         assert len(self.recent_checkpoints) > 0, 'No checkpoints found'
         shutil.copy(self.recent_checkpoints[-1], os.path.join(self.checkpoint_dir, f'{self.exp_name}.pt'))
+        print('Best checkpoint saved at', os.path.join(self.checkpoint_dir, f'{self.exp_name}.pt'))

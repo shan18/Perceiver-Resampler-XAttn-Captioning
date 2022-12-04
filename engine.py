@@ -208,6 +208,7 @@ class Trainer:
         if data_type == 'test' and self.save_test_results:
             with open(os.path.join(self.log_dir, f'inference.json'), 'w') as f:
                 json.dump(results, f, indent=2)
+            print(f'Inference results saved to {os.path.join(self.log_dir, "inference.json")}')
 
         return eval_loss, bleu_score
 
