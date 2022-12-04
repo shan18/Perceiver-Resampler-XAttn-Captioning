@@ -1,3 +1,4 @@
+import json
 import os
 from typing import Optional, Union
 
@@ -21,6 +22,7 @@ class Trainer:
         log_dir: str,
         exp_name: str,
         checkpoint_callback_params: Union[dict, DictConfig],
+        save_test_results: bool = True,
         device: Optional[str] = 'cpu',
     ):
         self.device = device
@@ -28,15 +30,19 @@ class Trainer:
 
         self.exp_name = exp_name
         self.checkpoint_callback_params = checkpoint_callback_params
+        self.save_test_results = save_test_results
         self.log_dir = os.path.join(log_dir, exp_name)
         os.makedirs(self.log_dir, exist_ok=True)
 
         self.tokenizer = tokenizer
         self.bleu_fn = hf_evaluate.load('bleu')
 
-    def _prepare_for_training(self, optimizer_cfg, num_steps_per_epoch, epochs, restore_ckpt=None):
-        # Create the loss function
+    def _setup_loss(self):
+        """Create the loss function"""
         self.criterion = nn.CrossEntropyLoss(ignore_index=-1)
+
+    def _prepare_for_training(self, optimizer_cfg, num_steps_per_epoch, epochs, restore_ckpt=None):
+        self._setup_loss()
 
         # Prepare the optimizer
         assert optimizer_cfg['name'] in ['adamw', 'adam'], 'Optimizer must be either AdamW or Adam'
@@ -109,7 +115,7 @@ class Trainer:
     def train(self, loader):
         self.model.train()
         pbar = ProgressBar(target=len(loader), width=8)
-        for batch_idx, (video, video_length, transcript) in enumerate(loader):
+        for batch_idx, (video, video_length, transcript, _) in enumerate(loader):
             video = video.to(self.device)
             transcript = transcript.to(self.device)
             video_length = video_length.to(self.device)
@@ -141,12 +147,18 @@ class Trainer:
     def evaluate(self, loader, data_type='dev'):
         self.model.eval()
 
+        # NOTE: This runs when we call the evaluate function directly without
+        # running the _preprar_for_training function
+        if not hasattr(self, 'criterion'):
+            self._setup_loss()
+
         eval_loss = 0
         predictions = []
         targets = []
+        results = []
 
         with torch.no_grad():
-            for video, video_lengths, transcript in loader:
+            for video, video_lengths, transcript, video_path in loader:
                 video = video.to(self.device)
                 transcript = transcript.to(self.device)
                 video_lengths = video_lengths.to(self.device)
@@ -169,15 +181,33 @@ class Trainer:
                 target = self.tokenizer.batch_decode(transcript, skip_special_tokens=True)
                 targets.extend([[t.strip()] for t in target])
 
+                # Store the results in a json format
+                if data_type == 'test' and self.save_test_results:
+                    results.extend(
+                        [
+                            {
+                                'video_path': video_path[i],
+                                'prediction': predictions[i],
+                                'target': targets[i][0],
+                            }
+                            for i in range(len(video_path))
+                        ]
+                    )
+
         # Compute the average loss and bleu score
         eval_loss /= len(loader)
         bleu_score = self.bleu_fn.compute(predictions=predictions, references=targets)['bleu']  # type: ignore[reportOptionalSubscript]
 
         print(
             f'{"Validation" if data_type == "dev" else "Test"} set: '
-            f'Average loss: {eval_loss:.4f} '
+            f'Average loss: {eval_loss:.4f} - '
             f'Bleu Score: {bleu_score:.4f}\n'
         )
+
+        # Write the results to a json file
+        if data_type == 'test' and self.save_test_results:
+            with open(os.path.join(self.log_dir, f'inference.json'), 'w') as f:
+                json.dump(results, f, indent=2)
 
         return eval_loss, bleu_score
 
@@ -194,7 +224,7 @@ class Trainer:
         for epoch in range(start_epoch, epochs + 1):
             print(f'\nEpoch {epoch}:')
             train_loss = self.train(train_loader)
-            eval_loss, eval_bleu = self.evaluate(dev_loader)
+            eval_loss, eval_bleu = self.validate(dev_loader)
 
             # Log the progress
             self.ckpt_manager.log(epoch, train_loss, eval_loss, eval_bleu)

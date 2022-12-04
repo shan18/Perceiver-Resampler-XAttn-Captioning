@@ -130,6 +130,7 @@ def main(cfg):
         cfg.trainer.exp_dir,
         cfg.trainer.exp_name,
         cfg.trainer.checkpoint_callback_params,
+        cfg.trainer.save_test_results,
         device=device,
     )
 

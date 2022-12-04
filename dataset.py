@@ -73,12 +73,12 @@ class MLSLTDataset(Dataset):
         # Process text
         transcript = self._process_text(transcript)
 
-        return video, video_length, transcript
+        return video, video_length, transcript, video_path # NOTE: We return video path because it's required to store results during evaluation
 
     def _collate_pad(self, batch_samples):
-        pad_video, pad_transcript, pad_video_length = [], [], []
+        pad_video, pad_transcript, pad_video_length, pad_video_path = [], [], [], []
         max_video_len = len(max(batch_samples, key=lambda x: len(x[0]))[0])
-        for video, video_length, transcript in batch_samples:
+        for video, video_length, transcript, video_path in batch_samples:
             # Pad video frames
             if video_length < max_video_len:
                 video = torch.cat(
@@ -86,10 +86,11 @@ class MLSLTDataset(Dataset):
                 )
             pad_video.append(video)
             pad_video_length.append(video_length)
+            pad_video_path.append(video_path)
 
             pad_transcript.append(transcript)
 
-        return torch.stack(pad_video), torch.stack(pad_video_length), torch.stack(pad_transcript)
+        return torch.stack(pad_video), torch.stack(pad_video_length), torch.stack(pad_transcript), pad_video_path
 
     def get_dataloader(self, batch_size, num_workers=1, shuffle=True):
         return DataLoader(

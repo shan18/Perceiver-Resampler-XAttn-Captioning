@@ -64,6 +64,7 @@ trainer:
   epochs: 40
   exp_dir: null
   exp_name: ${name}
+  save_test_results: true # Save the test results in a json file
   checkpoint_callback_params:
     monitor: val_bleu # Can be ['train_loss', 'val_loss', 'val_bleu']
     mode: max
