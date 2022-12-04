@@ -1,7 +1,7 @@
 import os
+import shutil
 
 import torch
-from omegaconf import DictConfig
 from torch import nn
 
 
@@ -93,3 +93,7 @@ class CheckpointManager:
             state_dict['scheduler_state_dict'] = self.scheduler.state_dict()
 
         torch.save(state_dict, path)
+
+    def save_best_state(self):
+        assert len(self.recent_checkpoints) > 0, 'No checkpoints found'
+        shutil.copy(self.recent_checkpoints[-1], os.path.join(self.checkpoint_dir, f'{self.exp_name}.pt'))

@@ -36,9 +36,3 @@ class BaseModel(nn.Module):
 
     def forward(self, *args, **kwargs):
         raise NotImplementedError
-
-    def save_weights(self, path):
-        torch.save(self.state_dict(), path)
-
-    def load_weights(self, path):
-        self.load_state_dict(torch.load(path))
