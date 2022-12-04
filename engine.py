@@ -87,7 +87,7 @@ class Trainer:
                 )
 
         # Restore states from checkpoint
-        start_epoch = 0
+        start_epoch = 1
         if restore_ckpt is not None:
             start_epoch = self._restore_state(restore_ckpt)
 
