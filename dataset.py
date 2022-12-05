@@ -56,9 +56,9 @@ class MLSLTDataset(Dataset):
         )
 
         # Add padding upto max_length
-        tokens = tokens[: self.max_length]
-        if len(tokens) < self.max_length:
-            tokens = torch.cat((tokens, torch.full((self.max_length - len(tokens),), -1, dtype=tokens.dtype)))
+        # tokens = tokens[: self.max_length]
+        # if len(tokens) < self.max_length:
+        #     tokens = torch.cat((tokens, torch.full((self.max_length - len(tokens),), -1, dtype=tokens.dtype)))
 
         return tokens
 
@@ -78,6 +78,7 @@ class MLSLTDataset(Dataset):
     def _collate_pad(self, batch_samples):
         pad_video, pad_transcript, pad_video_length, pad_video_path = [], [], [], []
         max_video_len = len(max(batch_samples, key=lambda x: len(x[0]))[0])
+        # max_text_len = len(max(batch_samples, key=lambda x: len(x[2]))[0])
         for video, video_length, transcript, video_path in batch_samples:
             # Pad video frames
             if video_length < max_video_len:
@@ -88,6 +89,11 @@ class MLSLTDataset(Dataset):
             pad_video_length.append(video_length)
             pad_video_path.append(video_path)
 
+            # Pad transcript
+            if len(transcript) < max_video_len:
+                transcript = torch.cat(
+                    (transcript, torch.full((max_video_len - len(transcript),), -1, dtype=transcript.dtype)), dim=0
+                )
             pad_transcript.append(transcript)
 
         return torch.stack(pad_video), torch.stack(pad_video_length), torch.stack(pad_transcript), pad_video_path

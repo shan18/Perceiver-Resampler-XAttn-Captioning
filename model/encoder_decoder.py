@@ -112,7 +112,7 @@ class TextGenerator(BaseModel):
             self.modified_layers.append(modified_layer)
             lm_layers[i] = modified_layer
 
-    def forward(self, input_embeddings):
+    def forward(self, video_embeddings, resampled_embeddings):
         """
         Args:
             input_embeddings: video embeddings with shape (batch_size, seq_length, 768)
@@ -120,11 +120,11 @@ class TextGenerator(BaseModel):
         Returns:
             Logits of the output transcript
         """
-        visual_features = input_embeddings.unsqueeze(1)
+        visual_features = resampled_embeddings.unsqueeze(1)
         for xattn in self.modified_layers:
             xattn.condition(visual_features, None)
 
-        return self._model(inputs_embeds=input_embeddings).logits
+        return self._model(inputs_embeds=video_embeddings.mean(dim=2)).logits
 
 
 class VideoTextModel(BaseModel):
@@ -157,6 +157,6 @@ class VideoTextModel(BaseModel):
         resampled_embeddings = self.resampler(video_embeddings, video_length)
 
         # Generate text
-        text_output = self.text_generator(resampled_embeddings)
+        text_output = self.text_generator(video_embeddings, resampled_embeddings)
 
         return text_output
