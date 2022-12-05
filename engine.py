@@ -225,7 +225,7 @@ class Trainer:
         for epoch in range(start_epoch, epochs + 1):
             print(f'\nEpoch {epoch}:')
             train_loss = self.train(train_loader)
-            eval_loss, eval_bleu = self.validate(dev_loader)
+            eval_loss, eval_bleu = self.evaluate(dev_loader)
 
             # Log the progress
             self.ckpt_manager.log(epoch, train_loss, eval_loss, eval_bleu)

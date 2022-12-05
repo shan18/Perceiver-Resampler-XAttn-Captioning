@@ -1,8 +1,12 @@
+from typing import List
+
 from einops import rearrange
 from omegaconf import DictConfig
+from torch import nn
 from transformers import CLIPVisionModel, GPT2LMHeadModel, logging
 
 from .base_model import BaseModel
+from .gated_cross_attention import ModifiedLMBlock
 from .resampler import PerceiverResampler
 
 
@@ -55,16 +59,58 @@ class TextGenerator(BaseModel):
         trainable: whether the model is trainable
     """
 
-    def __init__(self, pretrained_name: str, trainable: bool):
+    def __init__(
+        self,
+        pretrained_name: str,
+        trainable: bool,
+        xattn: DictConfig,
+    ):
         super().__init__(trainable)
+        self.dim = xattn.dim
+        self.dim_visual = xattn.dim_visual
+        self.dim_head = xattn.dim_head
+        self.heads = xattn.heads
+        self.num_latents = xattn.num_latents
+        self.ff_mult = xattn.ff_mult
+        self.activation = xattn.activation
+        self.freq = xattn.freq
+
         self._model = GPT2LMHeadModel.from_pretrained(pretrained_name)
         self._update_trainable_state()
+        self.modified_layers: List[ModifiedLMBlock] = []
+        self._init_layers(self._model.transformer.h)
+        for xattn in self.modified_layers:
+            for param in xattn.xattn_block.parameters():
+                param.requires_grad = True
 
     def get_input_shape(self, batch_size: int = 16, timesteps: int = 75):
         return (batch_size, timesteps, self._model.transformer.embed_dim), (batch_size, timesteps)
 
     def get_output_shape(self, batch_size: int = 16, timesteps: int = 75):
         return (batch_size, timesteps, self._model.lm_head.out_features)
+
+    def _init_layers(self, lm_layers: nn.ModuleList):
+        """
+        Adding cross attention layer between LM layers
+        """
+        self.modified_layers: List[ModifiedLMBlock] = []
+
+        for i, lm_layer in enumerate(lm_layers):
+            if i % self.freq != 0:
+                continue
+
+            modified_layer = ModifiedLMBlock(
+                lm_layer,
+                dim=self.dim,
+                dim_visual=self.dim_visual,
+                dim_head=self.dim_head,
+                heads=self.heads,
+                n_visual=self.num_latents,
+                ff_mult=self.ff_mult,
+                act=self.activation,
+            )
+            self.modified_layers.append(modified_layer)
+            lm_layers[i] = modified_layer
 
     def forward(self, input_embeddings):
         """
@@ -74,6 +120,10 @@ class TextGenerator(BaseModel):
         Returns:
             Logits of the output transcript
         """
+        visual_features = input_embeddings.unsqueeze(1)
+        for xattn in self.modified_layers:
+            xattn.condition(visual_features, None)
+
         return self._model(inputs_embeds=input_embeddings).logits
 
 

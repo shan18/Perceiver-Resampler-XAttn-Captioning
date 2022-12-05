@@ -6,16 +6,7 @@ from einops_exts import rearrange_many
 from torch import einsum, nn
 
 from .base_model import BaseModel
-
-
-class SquaredReLU(nn.Module):
-    """Squared ReLU activation function"""
-
-    def __init__(self):
-        super().__init__()
-
-    def forward(self, x):
-        return torch.pow(torch.relu(x), 2)
+from .utils import feed_forward_layer
 
 
 class PerceiverAttentionLayer(nn.Module):
@@ -116,7 +107,7 @@ class PerceiverResampler(BaseModel):
                 nn.ModuleList(
                     [
                         PerceiverAttentionLayer(dim=dim, dim_head=dim_head, heads=heads),
-                        self.feed_forward_layer(dim=dim, mult=ff_mult, activation=activation),
+                        feed_forward_layer(dim=dim, mult=ff_mult, activation=activation),
                     ]
                 )
             )
@@ -131,20 +122,6 @@ class PerceiverResampler(BaseModel):
 
     def get_output_shape(self, batch_size: int = 16, n_frames: int = 75):
         return (batch_size, n_frames, self.num_queries, self.dim)
-
-    def feed_forward_layer(self, dim: int, mult: int = 4, activation: str = 'gelu'):
-        """Feed forward layer with given activation function"""
-
-        activations = dict(gelu=nn.GELU, sqrelu=SquaredReLU, relu=nn.ReLU)
-        assert activation in activations, f'activation can only be one of {activations.keys()}'
-
-        inner_dim = int(dim * mult)
-        return nn.Sequential(
-            nn.LayerNorm(dim),
-            nn.Linear(dim, inner_dim, bias=False),
-            activations[activation](),
-            nn.Linear(inner_dim, dim, bias=False),
-        )
 
     def forward(self, x_f, video_length):
         """Run perceiver resampler on the input visual embeddings

@@ -17,13 +17,22 @@ model:
     heads: 8
     num_latents: 64
     num_time_embeds: 500
-    ff_mult: 4
+    ff_mult: 1
     activation: gelu
     trainable: true
 
   text:
     pretrained_name: gpt2 # Pre-trained weights of the text generator found on huggingface
     trainable: false
+    xattn:
+      dim: 768
+      dim_visual: 768
+      dim_head: 64
+      heads: 8
+      num_latents: 64
+      ff_mult: 1
+      activation: gelu
+      freq: 4
 
   optimizer:
     name: adamw # Optimizer to use for training. Can be ['adamw', 'adam']
