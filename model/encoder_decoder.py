@@ -5,12 +5,11 @@ from omegaconf import DictConfig
 from torch import nn
 from transformers import CLIPVisionModel, GPT2LMHeadModel, logging
 
-from .base_model import BaseModel
 from .gated_cross_attention import ModifiedLMBlock
 from .resampler import PerceiverResampler
 
 
-class VisionEncoder(BaseModel):
+class VisionEncoder(nn.Module):
     """Model to encode the video frames.
 
     Args:
@@ -19,13 +18,17 @@ class VisionEncoder(BaseModel):
     """
 
     def __init__(self, pretrained_name: str, trainable: bool):
-        super().__init__(trainable)
+        super().__init__()
 
         logging.set_verbosity_error()
         self._model = CLIPVisionModel.from_pretrained(pretrained_name)
         logging.set_verbosity_warning()
 
-        self._update_trainable_state()
+        self._update_trainable_state(trainable)
+
+    def _update_trainable_state(self, trainable: bool = False):
+        for param in self.parameters():
+            param.requires_grad = trainable
 
     def get_input_shape(self, batch_size: int = 16, timesteps: int = 75):
         return (batch_size, timesteps, 3, 224, 224)
@@ -51,7 +54,7 @@ class VisionEncoder(BaseModel):
         return embeddings
 
 
-class TextGenerator(BaseModel):
+class TextGenerator(nn.Module):
     """Model to generate the text.
 
     Args:
@@ -63,36 +66,37 @@ class TextGenerator(BaseModel):
         self,
         pretrained_name: str,
         trainable: bool,
-        xattn: DictConfig,
+        dim: int,
+        dim_visual: int,
+        dim_head: int,
+        heads: int,
+        num_latents: int,
+        ff_mult: int,
+        activation: str,
+        freq: int,
     ):
-        super().__init__(trainable)
-        self.dim = xattn.dim
-        self.dim_visual = xattn.dim_visual
-        self.dim_head = xattn.dim_head
-        self.heads = xattn.heads
-        self.num_latents = xattn.num_latents
-        self.ff_mult = xattn.ff_mult
-        self.activation = xattn.activation
-        self.freq = xattn.freq
+        super().__init__()
+        self.dim = dim
+        self.dim_visual = dim_visual
+        self.dim_head = dim_head
+        self.heads = heads
+        self.num_latents = num_latents
+        self.ff_mult = ff_mult
+        self.activation = activation
+        self.freq = freq
 
         self._model = GPT2LMHeadModel.from_pretrained(pretrained_name)
-        self._update_trainable_state()
-        self.modified_layers: List[ModifiedLMBlock] = []
-        self._init_layers(self._model.transformer.h)
-        for xattn in self.modified_layers:
-            for param in xattn.xattn_block.parameters():
-                param.requires_grad = True
+        self._update_trainable_state(trainable)
 
-    def get_input_shape(self, batch_size: int = 16, timesteps: int = 75):
-        return (batch_size, timesteps, self._model.transformer.embed_dim), (batch_size, timesteps)
+        # Add the gated cross attention layers
+        self._add_gated_cross_attention()
 
-    def get_output_shape(self, batch_size: int = 16, timesteps: int = 75):
-        return (batch_size, timesteps, self._model.lm_head.out_features)
+    def _update_trainable_state(self, trainable: bool = False):
+        for param in self.parameters():
+            param.requires_grad = trainable
 
     def _init_layers(self, lm_layers: nn.ModuleList):
-        """
-        Adding cross attention layer between LM layers
-        """
+        """Adding cross attention layer between LM layers"""
         self.modified_layers: List[ModifiedLMBlock] = []
 
         for i, lm_layer in enumerate(lm_layers):
@@ -112,10 +116,27 @@ class TextGenerator(BaseModel):
             self.modified_layers.append(modified_layer)
             lm_layers[i] = modified_layer
 
+    def _add_gated_cross_attention(self):
+        self._init_layers(self._model.transformer.h)
+        for xattn in self.modified_layers:
+            for param in xattn.xattn_block.parameters():
+                param.requires_grad = True
+
+    def get_input_shape(self, batch_size: int = 16, timesteps: int = 75, num_latents: int = 64):
+        return (batch_size, timesteps, 50, self._model.transformer.embed_dim), (
+            batch_size,
+            num_latents,
+            self._model.transformer.embed_dim,
+        )
+
+    def get_output_shape(self, batch_size: int = 16, timesteps: int = 75):
+        return (batch_size, timesteps, self._model.lm_head.out_features)
+
     def forward(self, video_embeddings, resampled_embeddings):
         """
         Args:
-            input_embeddings: video embeddings with shape (batch_size, seq_length, 768)
+            video_embeddings: video embeddings with shape (batch_size, timesteps, hidden_dim, 768)
+            resampled_embeddings: video embeddings with shape (batch_size, num_latents, 768)
 
         Returns:
             Logits of the output transcript
@@ -124,10 +145,11 @@ class TextGenerator(BaseModel):
         for xattn in self.modified_layers:
             xattn.condition(visual_features, None)
 
+        # FIXME: Insert a learnable parameter between GPT and CLIP embeddings
         return self._model(inputs_embeds=video_embeddings.mean(dim=2)).logits
 
 
-class VideoTextModel(BaseModel):
+class VideoTextModel(nn.Module):
     """Model to encode the video frames and generate the text.
 
     Args:
@@ -144,10 +166,13 @@ class VideoTextModel(BaseModel):
         text_generator_cfg: DictConfig,
         cfg: DictConfig = None,
     ):
-        super().__init__(trainable=True, cfg=cfg)
+        super().__init__()
+        self.cfg = cfg
         self.vision_encoder = VisionEncoder(**vision_encoder_cfg)
         self.resampler = PerceiverResampler(self.vision_encoder.get_output_shape()[-1], **resampler_cfg)
-        self.text_generator = TextGenerator(**text_generator_cfg)
+        self.text_generator = TextGenerator(
+            text_generator_cfg.pretrained_name, text_generator_cfg.trainable, **text_generator_cfg['xattn']
+        )
 
     def forward(self, video, video_length):
         # Encode video
