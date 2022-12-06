@@ -93,8 +93,11 @@ def create_dataset(video_dir: str, json_path: str, batch_size: int, num_workers:
 def main(cfg):
     assert cfg.mode == 'train' or cfg.pretrained_name is not None, 'Need to specify the checkpoint path in test mode'
 
-    check_mandatory_args(cfg.dataset.train_ds)
-    check_mandatory_args(cfg.dataset.validation_ds)
+    if cfg.mode == 'train':
+        check_mandatory_args(cfg.dataset.train_ds)
+        check_mandatory_args(cfg.dataset.validation_ds)
+    else:
+        check_mandatory_args(cfg.dataset.test_ds)
     setup_log_dir(cfg)
 
     if cfg.pretrained_name is not None:
