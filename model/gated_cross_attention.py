@@ -149,9 +149,7 @@ class ModifiedLMBlock(nn.Module):
 
     def __init__(self, lm_block, **kwargs):
         super().__init__()
-
-        # FIXME: Remove the hardcoded 'cuda' device
-        self.xattn_block = GatedCrossAttentionBlock(**kwargs).to('cuda')
+        self.xattn_block = GatedCrossAttentionBlock(**kwargs)
         self.lm_block = lm_block
         self.visual_features = None
         self.xattn_layer_past = None
