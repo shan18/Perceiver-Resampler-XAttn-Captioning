@@ -144,6 +144,23 @@ class Trainer:
 
         return loss.item()  # type: ignore[reportUnboundVariable]
 
+    def _compute_bleu(self, predictions, targets):
+        """Compute BLEU4 score"""
+        # FIXME: This is a temporary fix for the bug in the bleu score computation
+        # where the predictions has empty strings
+        new_predictions, new_targets = [], []
+        for i in range(len(predictions)):
+            if predictions[i] != '':
+                new_predictions.append(predictions[i])
+                new_targets.append(targets[i])
+
+        bleu_score = 0 if len(new_predictions) == 0 else self.bleu_fn.compute(predictions=new_predictions, references=new_targets)['bleu']  # type: ignore[reportOptionalSubscript]
+
+        # Get the weighted average of the bleu score with the empty predictions
+        bleu_score = (bleu_score * len(new_predictions)) / len(predictions)
+
+        return bleu_score
+
     def evaluate(self, loader, data_type='dev'):
         self.model.eval()
 
@@ -196,7 +213,7 @@ class Trainer:
 
         # Compute the average loss and bleu score
         eval_loss /= len(loader)
-        bleu_score = self.bleu_fn.compute(predictions=predictions, references=targets)['bleu']  # type: ignore[reportOptionalSubscript]
+        bleu_score = self._compute_bleu(predictions, targets)
 
         print(
             f'{"Validation" if data_type == "dev" else "Test"} set: '
