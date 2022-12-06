@@ -6,7 +6,7 @@ Gated cross-attention layer adapted from flamingo-pytorch.
 from typing import Optional, Tuple
 
 import torch
-from einops import rearrange, repeat
+from einops import rearrange
 from einops_exts import rearrange_many
 from torch import einsum, nn, tanh
 
@@ -14,27 +14,21 @@ from .utils import feed_forward_layer
 
 
 class MaskedCrossAttention(nn.Module):
-    def __init__(
-        self,
-        *,
-        dim,
-        dim_visual,
-        dim_head=64,
-        heads=8,
-        n_visual=64
-    ):
-        """
-        :param dim:      d_token, d_visual  dimensionality of language- and visual tokens
-        :param dim_head: dimensionality of the q, k, v vectors inside one attention head
-        :param heads:   number of attention heads
-        """
+    """Cross attention layer with masking.
+
+    Args:
+        dim: d_token, d_visual dimensionality of language and visual tokens
+        dim_head: dimensionality of the q, k, v vectors inside one attention head
+        heads: number of attention heads
+    """
+
+    def __init__(self, dim: int, dim_visual: int, dim_head: int = 64, heads: int = 8, n_visual: int = 64):
         super().__init__()
-        self.scale = dim_head ** -0.5
+        self.scale = dim_head**-0.5
         self.heads = heads
         self.n_visual = n_visual
         inner_dim = dim_head * heads
-        # self.dim = dim
-        self.norm = nn.LayerNorm(dim)
+        self.layer_norm = nn.LayerNorm(dim)
 
         self.to_q = nn.Linear(dim, inner_dim, bias=False)
         self.to_kv = nn.Linear(dim_visual, inner_dim * 2, bias=False)
@@ -42,51 +36,37 @@ class MaskedCrossAttention(nn.Module):
 
     def forward(
         self,
-        y: torch.Tensor,
-        visual_features=None,
-        previous_kv=None,
-        output_kv=False
+        y: torch.FloatTensor,
+        visual_features: Optional[torch.FloatTensor] = None,
+        previous_kv: tuple = None,
+        output_kv: bool = False,
     ):
-        """This has the same inputs as the GatedCrossAttentionBlock
-        Args:
-            y (FloatTensor):
-                language features (n_batch, n_token, d_token)
-            visual_features (FloatTensor, optional):
-                visual features   (n_batch, n_images, n_queries, d_visual). Defaults to None.
-            previous_kv (Tuple, optional):
-                tuple of previous keys and values. Passed when caching is used during text generation.
-                Defaults to None.
-            output_kv (bool, optional):
-                whether to return the keys and values. Defaults to False.
-        Returns:
-            FloatTensor: Tensor (n_batch, n_token, d_token)
         """
-        n_batch, n_media = visual_features.shape[:2]
-        n_batch_y, n_token, d_token = y.shape
-        n_heads = self.heads
+        Args:
+            y: language features (batch_size, n_token, d_token)
+            visual_features: visual features (batch_size, n_images, n_queries, d_visual)
+            previous_kv: tuple of previous keys and values. Passed when caching is used during text generation
+            output_kv: whether to return the keys and values
 
-        # LayerNorm
-        y = self.norm(y)
+        Returns:
+            Tensor (batch_size, n_token, d_token)
+        """
+        y = self.layer_norm(y)
 
-        # 2. compute the queries from the text tokens:
+        # Compute the queries from the text tokens
         q = self.to_q(y)
         q = q * self.scale
 
-        # 3. compute the keys and values from the visual tokens:
+        # Compute the keys and values from the visual tokens
         if previous_kv is None:
-            # flatten, so t is #images, n is #visual features per image.
-            # Now there is only one set of visual features per # sentence.
             visual_features = rearrange(visual_features, 'b t n d -> b (t n) d')
-
             k, v = self.to_kv(visual_features).chunk(2, dim=-1)
-            q, k, v = rearrange_many((q, k, v), 'b n (h d) -> b h n d', h=n_heads)
+            q, k, v = rearrange_many((q, k, v), 'b n (h d) -> b h n d', h=self.heads)
         else:
-            # visual_features can be ignored, k, v already computed
             k, v = previous_kv
-            n_media = k.size(2) // self.n_visual
-            q = rearrange(q, 'b n (h d) -> b h n d', h=n_heads)
+            q = rearrange(q, 'b n (h d) -> b h n d', h=self.heads)
 
-        # 5. compute the attention scores from the queries and keys:
+        # Compute the attention scores from the queries and keys
         sim = einsum('... i d, ... j d -> ... i j', q, k)
 
         sim = sim - sim.amax(dim=-1, keepdim=True).detach()
@@ -99,47 +79,43 @@ class MaskedCrossAttention(nn.Module):
 
         if output_kv:
             return conditioned_tokens, (k, v)
-        else:
-            return conditioned_tokens, None
 
+        return conditioned_tokens, None
 
 
 class GatedCrossAttentionBlock(nn.Module):
+    """
+    Args:
+        dim: d_token, d_visual
+        dim_head: dimensionality of q, k, v inside the attention head
+        heads: number of attention heads
+        ff_mult: factor for the number of inner neurons in the ffw layer
+    """
+
     def __init__(
         self,
-        *,
-        dim,
-        dim_visual,
-        dim_head=64,
-        heads=8,
-        ff_mult=4,
-        act='gelu',
-        n_visual=64
+        dim: int,
+        dim_visual: int,
+        dim_head: int = 64,
+        heads: int = 8,
+        ff_mult: int = 4,
+        act: str = 'gelu',
+        n_visual: int = 64,
     ):
-        """
-        :param dim:      d_token, d_visual
-        :param dim_head: dimensionality of q, k, v inside the attention head
-        :param heads:    number of attention heads
-        :param ff_mult:  factor for the number of inner neurons in the ffw layer
-        """
         super().__init__()
-        self.attn = MaskedCrossAttention(dim=dim, dim_visual=dim_visual, dim_head=dim_head, heads=heads, n_visual=n_visual)
-        self.alpha_attn = nn.Parameter(torch.tensor([0.]))
+        self.attn = MaskedCrossAttention(
+            dim=dim, dim_visual=dim_visual, dim_head=dim_head, heads=heads, n_visual=n_visual
+        )
+        self.alpha_attn = nn.Parameter(torch.tensor([0.0]))  # type: ignore[reportPrivateUsage]
 
         self.ffw = feed_forward_layer(dim, mult=ff_mult, activation=act)
-        self.alpha_ffw = nn.Parameter(torch.tensor([0.]))
+        self.alpha_ffw = nn.Parameter(torch.tensor([0.0]))  # type: ignore[reportPrivateUsage]
 
-    def forward(
-        self,
-        y: torch.LongTensor,
-        visual_features: torch.FloatTensor,
-        previous_kv=None,
-        output_kv=False
-    ):
+    def forward(self, y: torch.LongTensor, visual_features: torch.FloatTensor, previous_kv=None, output_kv=False):
         """
-        :param y:           (n_batch, n_tokens, d_token) - language features from previous LM layer
-        :param media:       (n_batch, n_media, n_queries, dim) - visual features, encoded by perceiver resample
-        :return:
+        Args:
+            y: language features from previous LM layer (batch_size, n_tokens, d_token)
+            media: visual features, encoded by perceiver resample (batch_size, n_media, n_queries, dim)
         """
         if previous_kv is None:
             assert visual_features.ndim == 4
@@ -168,12 +144,13 @@ class ModifiedLMBlock(nn.Module):
     the cached keys and values for the xattn layers need to be retrieved separately from
     the kv_output property.
 
-    (!) This implementation works with GPT-2 and OPT layers, but hasn't been tested with other LMs yet.
+    (!) This implementation works with GPT-2 layers, but hasn't been tested with other LMs yet.
     """
 
     def __init__(self, lm_block, **kwargs):
         super().__init__()
 
+        # FIXME: Remove the hardcoded 'cuda' device
         self.xattn_block = GatedCrossAttentionBlock(**kwargs).to('cuda')
         self.lm_block = lm_block
         self.visual_features = None
@@ -182,7 +159,7 @@ class ModifiedLMBlock(nn.Module):
 
     def condition(self, visual_features: torch.FloatTensor, xattn_layer_past=None):
         """
-        conditioning. Called from outside of the LM before passing the text input to the LM.
+        Conditioning. Called from outside of the LM before passing the text input to the LM.
         This way, the gated cross-attention layers get informed about the visual input
         without the need to pipe the visual input through the LM forward() function.
 
@@ -196,24 +173,19 @@ class ModifiedLMBlock(nn.Module):
         self.visual_features = visual_features
         self.xattn_layer_past = xattn_layer_past
 
-    def forward(
-        self,
-        hidden_states: Optional[Tuple[torch.FloatTensor]],
-        use_cache: Optional[bool] = False,
-        **kwargs
-    ):
+    def forward(self, hidden_states: Optional[Tuple[torch.FloatTensor]], use_cache: Optional[bool] = False, **kwargs):
         """
         This forward function mimics forward() of GPT2Block, so it has the same input and output.
         """
 
-        # pass through xattn
+        # Pass through xattn
         hidden_states, kv = self.xattn_block(
             y=hidden_states,
             visual_features=self.visual_features,
             previous_kv=self.xattn_layer_past,
-            output_kv=use_cache
+            output_kv=use_cache,
         )
         self.kv_output = kv
 
-        # pass through original LM layer
+        # Pass through original LM layer
         return self.lm_block(hidden_states, use_cache=use_cache, **kwargs)

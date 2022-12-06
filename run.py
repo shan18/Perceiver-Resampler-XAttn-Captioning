@@ -39,6 +39,7 @@ import os
 import hydra
 import torch
 from omegaconf import DictConfig, OmegaConf, open_dict
+from torchinfo import summary
 
 from dataset import MLSLTDataset
 from engine import Trainer
@@ -68,7 +69,7 @@ def restore_cfg(cfg: DictConfig, checkpoint_path: str):
         cfg.model = model_cfg
 
 
-def create_dataset(video_dir: str, json_path: str, batch_size: int, num_workers: int, shuffle: bool, max_length: int):
+def create_dataset(video_dir: str, json_path: str, batch_size: int, num_workers: int, shuffle: bool):
     """Creates the dataset and its dataloaders
 
     Args:
@@ -83,7 +84,7 @@ def create_dataset(video_dir: str, json_path: str, batch_size: int, num_workers:
         The MLSLTDataset dataset object and the data loader
     """
     print(f'Loading dataset from {video_dir} and {json_path}')
-    dataset = MLSLTDataset(video_dir, json_path, max_length)
+    dataset = MLSLTDataset(video_dir, json_path)
     loader = dataset.get_dataloader(batch_size, num_workers=num_workers, shuffle=shuffle)
     return dataset, loader
 
@@ -107,19 +108,17 @@ def main(cfg):
     # Build model
     print('Creating model...')
     model = build_model(model_cfg=cfg.model, pretrained_name=cfg.pretrained_name, device=device)
-    model.summary()
+    summary(model)
 
     # Create dataloaders
     print('Creating dataloaders...')
     tokenizer = None
     if cfg.mode == 'train':
-        train_dataset, train_loader = create_dataset(
-            **cfg.dataset.train_ds, max_length=cfg.model.resampler.num_latents
-        )
-        _, dev_loader = create_dataset(**cfg.dataset.validation_ds, max_length=cfg.model.resampler.num_latents)
+        train_dataset, train_loader = create_dataset(**cfg.dataset.train_ds)
+        _, dev_loader = create_dataset(**cfg.dataset.validation_ds)
         tokenizer = train_dataset.tokenizer
     else:
-        test_dataset, test_loader = create_dataset(**cfg.dataset.test_ds, max_length=cfg.model.resampler.num_latents)
+        test_dataset, test_loader = create_dataset(**cfg.dataset.test_ds)
         tokenizer = test_dataset.tokenizer
 
     # Create trainer

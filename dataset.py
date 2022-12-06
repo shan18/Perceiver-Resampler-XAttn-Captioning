@@ -12,12 +12,11 @@ from transformers import CLIPProcessor, GPT2Tokenizer
 
 
 class MLSLTDataset(Dataset):
-    def __init__(self, video_dir, json_path, max_length):
+    def __init__(self, video_dir, json_path):
         super().__init__()
 
         assert os.path.exists(video_dir), 'The videos directory does not exist.'
 
-        self.max_length = max_length
         self.video_dir = video_dir
         self._get_labels(json_path)
 
@@ -55,11 +54,6 @@ class MLSLTDataset(Dataset):
             (torch.tensor([self.tokenizer.bos_token_id]), tokens, torch.tensor([self.tokenizer.eos_token_id]))
         )
 
-        # Add padding upto max_length
-        # tokens = tokens[: self.max_length]
-        # if len(tokens) < self.max_length:
-        #     tokens = torch.cat((tokens, torch.full((self.max_length - len(tokens),), -1, dtype=tokens.dtype)))
-
         return tokens
 
     def __getitem__(self, index):
@@ -73,12 +67,12 @@ class MLSLTDataset(Dataset):
         # Process text
         transcript = self._process_text(transcript)
 
-        return video, video_length, transcript, video_path # NOTE: We return video path because it's required to store results during evaluation
+        # NOTE: We return video path because it's required to store results during evaluation
+        return video, video_length, transcript, video_path
 
     def _collate_pad(self, batch_samples):
         pad_video, pad_transcript, pad_video_length, pad_video_path = [], [], [], []
         max_video_len = len(max(batch_samples, key=lambda x: len(x[0]))[0])
-        # max_text_len = len(max(batch_samples, key=lambda x: len(x[2]))[0])
         for video, video_length, transcript, video_path in batch_samples:
             # Pad video frames
             if video_length < max_video_len:

@@ -5,7 +5,6 @@ from einops import rearrange, repeat
 from einops_exts import rearrange_many
 from torch import einsum, nn
 
-from .base_model import BaseModel
 from .utils import feed_forward_layer
 
 
@@ -78,7 +77,7 @@ class PerceiverAttentionLayer(nn.Module):
         return self.to_out(out)
 
 
-class PerceiverResampler(BaseModel):
+class PerceiverResampler(nn.Module):
     """Perceiver Resampler with multi-head attention layer"""
 
     def __init__(
@@ -93,7 +92,7 @@ class PerceiverResampler(BaseModel):
         activation: str = 'gelu',
         trainable: bool = True
     ):
-        super().__init__(trainable)
+        super().__init__()
 
         self.dim = dim
         self.num_queries = num_latents
@@ -115,7 +114,11 @@ class PerceiverResampler(BaseModel):
         # Layer normalization takes as input the query vector length
         self.norm = nn.LayerNorm(dim)
 
-        self._update_trainable_state()
+        self._update_trainable_state(trainable)
+
+    def _update_trainable_state(self, trainable: bool = False):
+        for param in self.parameters():
+            param.requires_grad = trainable
 
     def get_input_shape(self, batch_size: int = 16, n_frames: int = 75, n_features: int = 50):
         return (batch_size, n_frames, n_features, self.dim)
