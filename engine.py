@@ -19,6 +19,7 @@ class Trainer:
         self,
         model: nn.Module,
         tokenizer: PreTrainedTokenizer,
+        text_max_length: int,
         log_dir: str,
         exp_name: str,
         checkpoint_callback_params: Union[dict, DictConfig],
@@ -28,6 +29,7 @@ class Trainer:
         self.device = device
         self.model = model.to(device)
 
+        self.text_max_length = text_max_length
         self.exp_name = exp_name
         self.checkpoint_callback_params = checkpoint_callback_params
         self.save_test_results = save_test_results
@@ -39,7 +41,7 @@ class Trainer:
 
     def _setup_loss(self):
         """Create the loss function"""
-        self.criterion = nn.CrossEntropyLoss(ignore_index=-1)
+        self.criterion = nn.CrossEntropyLoss(ignore_index=0)
 
     def _prepare_for_training(self, optimizer_cfg, num_steps_per_epoch, epochs, restore_ckpt=None):
         self._setup_loss()
@@ -115,17 +117,18 @@ class Trainer:
     def train(self, loader):
         self.model.train()
         pbar = ProgressBar(target=len(loader), width=8)
-        for batch_idx, (video, video_length, transcript, _) in enumerate(loader):
+        for batch_idx, (video, video_length, tokens, tokens_mask, _) in enumerate(loader):
             video = video.to(self.device)
-            transcript = transcript.to(self.device)
             video_length = video_length.to(self.device)
+            tokens = tokens.to(self.device)
+            tokens_mask = tokens_mask.to(self.device)
 
             self.optimizer.zero_grad()
-            outputs = self.model(video, video_length)
+            outputs = self.model(video, video_length, tokens=tokens, tokens_mask=tokens_mask)
 
             # Compute the loss
             outputs = rearrange(outputs, 'b t d -> b d t')
-            loss = self.criterion(outputs, transcript)
+            loss = self.criterion(outputs, tokens)
 
             loss.backward()
             self.optimizer.step()
@@ -146,18 +149,18 @@ class Trainer:
 
     def _compute_bleu(self, predictions, targets):
         """Compute BLEU4 score"""
-        # FIXME: This is a temporary fix for the bug in the bleu score computation
-        # where the predictions has empty strings
-        new_predictions, new_targets = [], []
-        for i in range(len(predictions)):
-            if predictions[i] != '':
-                new_predictions.append(predictions[i])
-                new_targets.append(targets[i])
+        # Remove the empty predictions and their corresponding targets
+        valid_predictions, valid_targets = [], []
+        for pred, target in zip(predictions, targets):
+            pred = pred.strip()
+            if pred != '':
+                valid_predictions.append(pred)
+                valid_targets.append([target.strip()])
 
-        bleu_score = 0 if len(new_predictions) == 0 else self.bleu_fn.compute(predictions=new_predictions, references=new_targets)['bleu']  # type: ignore[reportOptionalSubscript]
+        bleu_score = 0 if len(valid_predictions) == 0 else self.bleu_fn.compute(predictions=valid_predictions, references=valid_targets)['bleu']  # type: ignore[reportOptionalSubscript]
 
         # Get the weighted average of the bleu score with the empty predictions
-        bleu_score = (bleu_score * len(new_predictions)) / len(predictions)
+        bleu_score = (bleu_score * len(valid_predictions)) / len(predictions)
 
         return bleu_score
 
@@ -170,50 +173,59 @@ class Trainer:
             self._setup_loss()
 
         eval_loss = 0
-        predictions = []
-        targets = []
-        results = []
+        prediction_ids, target_ids, video_paths = [], [], []
 
         with torch.no_grad():
-            for video, video_lengths, transcript, video_path in loader:
+            for video, video_lengths, tokens, tokens_mask, video_path in loader:
                 video = video.to(self.device)
-                transcript = transcript.to(self.device)
                 video_lengths = video_lengths.to(self.device)
+                tokens = tokens.to(self.device)
+                tokens_mask = tokens_mask.to(self.device)
 
                 # Get predictions
-                outputs = self.model(video, video_lengths)
+                outputs = self.model(video, video_lengths, tokens=tokens, tokens_mask=tokens_mask)
 
                 # Compute the loss
                 outputs = rearrange(outputs, 'b t d -> b d t')
-                loss = self.criterion(outputs, transcript)
+                loss = self.criterion(outputs, tokens)
                 eval_loss += loss.item()
 
                 # Get sentence predictions for computing BLEU score
-                outputs_ids = torch.argmax(outputs, dim=1)
-                preds = self.tokenizer.batch_decode(outputs_ids, skip_special_tokens=True)
-                predictions.extend([pred.strip() for pred in preds])
+                outputs_ids = torch.argmax(outputs, dim=1)  # (batch_size, n_tokens)
+                prediction_ids.extend(outputs_ids.tolist())
 
-                # Replace the -1 token id with something the tokenizer can decode
-                transcript[transcript == -1] = self.tokenizer.eos_token_id
-                target = self.tokenizer.batch_decode(transcript, skip_special_tokens=True)
-                targets.extend([[t.strip()] for t in target])
+                # Remove the padding tokens from the targets
+                target_ids.extend([t[:l] for t, l in zip(tokens.tolist(), tokens_mask.sum(dim=1).tolist())])
 
-                # Store the results in a json format
-                if data_type == 'test' and self.save_test_results:
-                    results.extend(
-                        [
-                            {
-                                'video_path': video_path[i],
-                                'prediction': predictions[i],
-                                'target': targets[i][0],
-                            }
-                            for i in range(len(video_path))
-                        ]
-                    )
+                video_paths.extend(video_path)
+
+        # Remove tokens from predictions after EOS
+        prediction_ids = [
+            pred_id[:pred_id.index(self.tokenizer.eos_token_id)] if self.tokenizer.eos_token_id in pred_id else pred_id[:self.text_max_length]
+            for pred_id in prediction_ids
+        ]
+
+        # Get the prediction and target strings
+        predictions = self.tokenizer.batch_decode(prediction_ids, skip_special_tokens=True)
+        targets = self.tokenizer.batch_decode(target_ids, skip_special_tokens=True)
 
         # Compute the average loss and bleu score
         eval_loss /= len(loader)
         bleu_score = self._compute_bleu(predictions, targets)
+
+        # Store the results in a json format
+        results = []
+        if data_type == 'test' and self.save_test_results:
+            results.extend(
+                [
+                    {
+                        'video_path': video_paths[i],
+                        'prediction': predictions[i],
+                        'target': targets[i],
+                    }
+                    for i in range(len(video_paths))
+                ]
+            )
 
         print(
             f'{"Validation" if data_type == "dev" else "Test"} set: '

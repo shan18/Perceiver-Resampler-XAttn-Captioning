@@ -115,20 +115,22 @@ def main(cfg):
 
     # Create dataloaders
     print('Creating dataloaders...')
-    tokenizer = None
     if cfg.mode == 'train':
         train_dataset, train_loader = create_dataset(**cfg.dataset.train_ds)
         _, dev_loader = create_dataset(**cfg.dataset.validation_ds)
         tokenizer = train_dataset.tokenizer
+        text_max_length = train_dataset.max_length
     else:
         test_dataset, test_loader = create_dataset(**cfg.dataset.test_ds)
         tokenizer = test_dataset.tokenizer
+        text_max_length = test_dataset.max_length
 
     # Create trainer
     print('Creating trainer...')
     trainer = Trainer(
         model,
         tokenizer,
+        text_max_length,
         cfg.trainer.exp_dir,
         cfg.trainer.exp_name,
         cfg.trainer.checkpoint_callback_params,
