@@ -112,6 +112,7 @@ def main(cfg):
     print('Creating model...')
     model = build_model(model_cfg=cfg.model, pretrained_name=cfg.pretrained_name, device=device)
     summary(model)
+    exit()
 
     # Create dataloaders
     print('Creating dataloaders...')

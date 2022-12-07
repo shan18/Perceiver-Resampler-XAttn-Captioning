@@ -7,6 +7,8 @@ mode: train # train or test
 pretrained_name: null # path to checkpoint. Mandatory for test mode.
 
 model:
+  enable_resampler_xattn: true # Enable the resampler and the gated xattn module
+
   vision:
     pretrained_name: openai/clip-vit-base-patch32 # Pre-trained weights of the vision encoder found on huggingface
     trainable: false
