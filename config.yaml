@@ -26,6 +26,7 @@ model:
   text:
     pretrained_name: gpt2 # Pre-trained weights of the text generator found on huggingface
     trainable: false
+    trainable_lm_head: false
     xattn:
       dim_head: 64
       heads: 8

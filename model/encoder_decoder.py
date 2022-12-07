@@ -68,6 +68,7 @@ class TextGenerator(nn.Module):
         self,
         pretrained_name: str,
         trainable: bool,
+        trainable_lm_head: bool,
         dim_visual: Optional[int] = None,
         dim_head: Optional[int] = None,
         heads: Optional[int] = None,
@@ -88,15 +89,20 @@ class TextGenerator(nn.Module):
             self.freq = freq
 
         self.lm = GPT2LMHeadModel.from_pretrained(pretrained_name)
-        self._update_trainable_state(trainable)
+        self._update_trainable_state(trainable, trainable_lm_head)
 
         # Add the gated cross attention layers
         if self.enable_gated_xattn:
             self._add_gated_cross_attention()
 
-    def _update_trainable_state(self, trainable: bool = False):
+    def _update_trainable_state(self, trainable: bool = False, trainable_lm_head: bool = False):
+        # Update the trainable state of the LM
         for param in self.parameters():
             param.requires_grad = trainable
+
+        # Update the trainable state of the LM head
+        for param in self.lm.lm_head.parameters():
+            param.requires_grad = trainable_lm_head
 
     def _init_layers(self, lm_layers: nn.ModuleList):
         """Adding cross attention layer between LM layers"""
@@ -185,7 +191,10 @@ class VideoTextModel(nn.Module):
         # Build the text generator
         xattn_kwargs = {} if not self.enable_resampler_xattn else text_generator_cfg['xattn']
         self.text_generator = TextGenerator(
-            text_generator_cfg.pretrained_name, text_generator_cfg.trainable, **xattn_kwargs
+            text_generator_cfg.pretrained_name,
+            text_generator_cfg.trainable,
+            text_generator_cfg.trainable_lm_head,
+            **xattn_kwargs
         )
 
         # Build the resampler
