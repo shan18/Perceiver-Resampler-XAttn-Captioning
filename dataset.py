@@ -35,6 +35,8 @@ class MLSLTDataset(Dataset):
             for video in metadata
         ]
 
+        self.max_length = max([len(x['transcript']['en']) for x in self.json_data])
+
     def __len__(self):
         return len(self.json_data)
 
@@ -47,14 +49,21 @@ class MLSLTDataset(Dataset):
 
     def _process_text(self, text):
         # Convert the text to tokens
-        tokens = self.tokenizer(text, add_prefix_space=True, return_tensors='pt')['input_ids'].squeeze(0)
-
-        # Add the start and end tokens
-        tokens = torch.cat(
-            (torch.tensor([self.tokenizer.bos_token_id]), tokens, torch.tensor([self.tokenizer.eos_token_id]))
+        tokenized_text = self.tokenizer(
+            text + f' {self.tokenizer.eos_token}',
+            add_prefix_space=True,
+            max_length=self.max_length,
+            truncation=True,
+            padding='max_length',
+            return_tensors='pt',
         )
+        tokens = tokenized_text['input_ids'].squeeze(0)
+        attention_mask = tokenized_text['attention_mask'].squeeze(0)
 
-        return tokens
+        # Set padding to zero
+        tokens[attention_mask == 0] = 0
+
+        return tokens, attention_mask
 
     def __getitem__(self, index):
         sample_id = self.json_data[index]['id']
@@ -65,15 +74,15 @@ class MLSLTDataset(Dataset):
         video, video_length = self._process_video(video_path)
 
         # Process text
-        transcript = self._process_text(transcript)
+        tokens, tokens_mask = self._process_text(transcript)
 
         # NOTE: We return video path because it's required to store results during evaluation
-        return video, video_length, transcript, video_path
+        return video, video_length, tokens, tokens_mask, video_path
 
     def _collate_pad(self, batch_samples):
-        pad_video, pad_transcript, pad_video_length, pad_video_path = [], [], [], []
+        pad_video, pad_video_length, pad_tokens, pad_tokens_mask, pad_video_path = [], [], [], [], []
         max_video_len = len(max(batch_samples, key=lambda x: len(x[0]))[0])
-        for video, video_length, transcript, video_path in batch_samples:
+        for video, video_length, tokens, tokens_mask, video_path in batch_samples:
             # Pad video frames
             if video_length < max_video_len:
                 video = torch.cat(
@@ -83,14 +92,17 @@ class MLSLTDataset(Dataset):
             pad_video_length.append(video_length)
             pad_video_path.append(video_path)
 
-            # Pad transcript
-            if len(transcript) < max_video_len:
-                transcript = torch.cat(
-                    (transcript, torch.full((max_video_len - len(transcript),), -1, dtype=transcript.dtype)), dim=0
-                )
-            pad_transcript.append(transcript)
+            # Pad tokens
+            pad_tokens.append(tokens)
+            pad_tokens_mask.append(tokens_mask)
 
-        return torch.stack(pad_video), torch.stack(pad_video_length), torch.stack(pad_transcript), pad_video_path
+        return (
+            torch.stack(pad_video),
+            torch.stack(pad_video_length),
+            torch.stack(pad_tokens),
+            torch.stack(pad_tokens_mask),
+            pad_video_path,
+        )
 
     def get_dataloader(self, batch_size, num_workers=1, shuffle=True):
         return DataLoader(
