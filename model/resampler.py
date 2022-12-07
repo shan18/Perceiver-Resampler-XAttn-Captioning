@@ -90,7 +90,7 @@ class PerceiverResampler(nn.Module):
         num_time_embeds: int = 4,
         ff_mult: int = 4,
         activation: str = 'gelu',
-        trainable: bool = True
+        trainable: bool = True,
     ):
         super().__init__()
 
@@ -137,7 +137,9 @@ class PerceiverResampler(nn.Module):
         assert dim == self.dim
 
         # Mask the position embeddings for the padded frames
-        time_pos_emb = self.time_pos_emb[:max_length].unsqueeze(0).expand(batch_size, -1, -1, -1)  # [batch_size, max_length, 1, dim]
+        time_pos_emb = (
+            self.time_pos_emb[:max_length].unsqueeze(0).expand(batch_size, -1, -1, -1)
+        )  # [batch_size, max_length, 1, dim]
         if mask is not None:
             time_pos_emb = time_pos_emb * mask.unsqueeze(-1).unsqueeze(-1)
 

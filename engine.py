@@ -201,7 +201,9 @@ class Trainer:
 
         # Remove tokens from predictions after EOS
         prediction_ids = [
-            pred_id[:pred_id.index(self.tokenizer.eos_token_id)] if self.tokenizer.eos_token_id in pred_id else pred_id[:self.text_max_length]
+            pred_id[: pred_id.index(self.tokenizer.eos_token_id)]
+            if self.tokenizer.eos_token_id in pred_id
+            else pred_id[: self.text_max_length]
             for pred_id in prediction_ids
         ]
 
