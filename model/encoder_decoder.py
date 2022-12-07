@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 
 import torch
 from einops import rearrange
@@ -68,28 +68,31 @@ class TextGenerator(nn.Module):
         self,
         pretrained_name: str,
         trainable: bool,
-        dim_visual: int,
-        dim_head: int,
-        heads: int,
-        num_latents: int,
-        ff_mult: int,
-        activation: str,
-        freq: int,
+        dim_visual: Optional[int] = None,
+        dim_head: Optional[int] = None,
+        heads: Optional[int] = None,
+        num_latents: Optional[int] = None,
+        ff_mult: Optional[int] = None,
+        activation: Optional[str] = None,
+        freq: Optional[int] = None,
     ):
         super().__init__()
-        self.dim_visual = dim_visual
-        self.dim_head = dim_head
-        self.heads = heads
-        self.num_latents = num_latents
-        self.ff_mult = ff_mult
-        self.activation = activation
-        self.freq = freq
+        self.enable_gated_xattn = dim_visual is not None
+        if self.enable_gated_xattn:
+            self.dim_visual = dim_visual
+            self.dim_head = dim_head
+            self.heads = heads
+            self.num_latents = num_latents
+            self.ff_mult = ff_mult
+            self.activation = activation
+            self.freq = freq
 
         self.lm = GPT2LMHeadModel.from_pretrained(pretrained_name)
         self._update_trainable_state(trainable)
 
         # Add the gated cross attention layers
-        self._add_gated_cross_attention()
+        if self.enable_gated_xattn:
+            self._add_gated_cross_attention()
 
     def _update_trainable_state(self, trainable: bool = False):
         for param in self.parameters():
@@ -122,7 +125,7 @@ class TextGenerator(nn.Module):
             for param in xattn.xattn_block.parameters():
                 param.requires_grad = True
 
-    def forward(self, video_embeddings, resampler_embeddings, tokens=None, mask: torch.FloatTensor = None):
+    def forward(self, video_embeddings, resampler_embeddings=None, tokens=None, mask: torch.FloatTensor = None):
         """
         Args:
             video_embeddings: video embeddings with shape (batch_size, n_frames, 768)
@@ -133,9 +136,11 @@ class TextGenerator(nn.Module):
         Returns:
             Logits of the output transcript
         """
-        resampler_embeddings = resampler_embeddings.unsqueeze(1)
-        for xattn in self.modified_layers:
-            xattn.condition(resampler_embeddings, None)
+        if self.enable_gated_xattn:
+            assert resampler_embeddings is not None, "Resampler embeddings are required for gated cross attention"
+            resampler_embeddings = resampler_embeddings.unsqueeze(1)  # type: ignore[reportOptionalMemberAccess]
+            for xattn in self.modified_layers:
+                xattn.condition(resampler_embeddings, None)
 
         text_embeddings = self.lm.transformer.wte(tokens)  # (batch_size, n_tokens, 768)
         embeddings = torch.cat((video_embeddings, text_embeddings), dim=1)  # (batch_size, n_frames + n_tokens, 768)
@@ -162,20 +167,30 @@ class VideoTextModel(nn.Module):
     def __init__(
         self,
         vision_encoder_cfg: DictConfig,
-        resampler_cfg: DictConfig,
         text_generator_cfg: DictConfig,
-        cfg: DictConfig = None,
+        resampler_cfg: Optional[DictConfig] = None,
+        cfg: Optional[DictConfig] = None,
     ):
         super().__init__()
         self.cfg = cfg
+        self.enable_resampler_xattn = resampler_cfg is not None
+
+        # Build the vision encoder
         self.vision_encoder = VisionEncoder(**vision_encoder_cfg)
-        self.resampler = PerceiverResampler(self.vision_encoder.dim, **resampler_cfg)
+
+        # Remove cross attention if the resampler is disabled
+        if self.enable_resampler_xattn:
+            text_generator_cfg['xattn']['dim_visual'] = self.vision_encoder.dim
+
+        # Build the text generator
+        xattn_kwargs = {} if not self.enable_resampler_xattn else text_generator_cfg['xattn']
         self.text_generator = TextGenerator(
-            text_generator_cfg.pretrained_name,
-            text_generator_cfg.trainable,
-            self.vision_encoder.dim,
-            **text_generator_cfg['xattn']
+            text_generator_cfg.pretrained_name, text_generator_cfg.trainable, **xattn_kwargs
         )
+
+        # Build the resampler
+        if self.enable_resampler_xattn:
+            self.resampler = PerceiverResampler(self.vision_encoder.dim, **resampler_cfg)
 
     def _create_video_mask(self, video_length):
         """Create a mask for the video embeddings.
@@ -199,13 +214,15 @@ class VideoTextModel(nn.Module):
         video_embeddings = self.vision_encoder(video, mask=video_mask)
 
         # Resample video embeddings
-        resampled_embeddings = self.resampler(video_embeddings, mask=video_mask)
+        resampled_embeddings = None
+        if self.enable_resampler_xattn:
+            resampled_embeddings = self.resampler(video_embeddings, mask=video_mask)
 
         # Generate text
         text_mask = torch.cat((video_mask.float(), tokens_mask), dim=1)
         # FIXME: Insert a learnable parameter between GPT and CLIP embeddings
         text_output = self.text_generator(
-            video_embeddings.mean(dim=2), resampled_embeddings, tokens=tokens, mask=text_mask
+            video_embeddings.mean(dim=2), resampler_embeddings=resampled_embeddings, tokens=tokens, mask=text_mask
         )
 
         return text_output
