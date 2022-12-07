@@ -120,37 +120,29 @@ class PerceiverResampler(nn.Module):
         for param in self.parameters():
             param.requires_grad = trainable
 
-    def get_input_shape(self, batch_size: int = 16, n_frames: int = 75, n_features: int = 50):
-        return (batch_size, n_frames, n_features, self.dim)
-
-    def get_output_shape(self, batch_size: int = 16, n_frames: int = 75):
-        return (batch_size, n_frames, self.num_queries, self.dim)
-
-    def forward(self, x_f, video_length):
+    def forward(self, x_f: torch.Tensor, mask: torch.BoolTensor = None):
         """Run perceiver resampler on the input visual embeddings
 
         Args:
             x_f: Input visual embeddings of shape (batch_size, n_frames, n_features, d_visual)
-            video_length: Length of Input visual embeddings of shape (batch_size,)
+            mask: Mask for the input visual embeddings of shape (batch_size, n_frames)
 
         Returns:
-            Input features of shape (batch_size, T, num_queries, d_visual)
+            Resampler features of shape (batch_size, num_queries, d_visual)
         """
         assert x_f.ndim == 4
 
-        batch_size, _, _, dim = x_f.shape
-        max_video_len = max(video_length)
+        batch_size, max_length, _, dim = x_f.shape
 
         assert dim == self.dim
 
-        # Create mask for removing the position embeddings for the padded frames
-        mask = torch.arange(1, max_video_len + 1).repeat(batch_size, 1).to(x_f.device)   # [batch_size, max_video_len]
-        mask = torch.where(mask <= video_length.repeat(max_video_len, 1).T, 1, 0)  # [batch_size, max_video_len]
-        mask = mask.unsqueeze(2).unsqueeze(3).repeat(1, 1, 1, self.dim)  # [batch_size, max_video_len, 1, dim]
-
         # Mask the position embeddings for the padded frames
-        time_pos_emb = self.time_pos_emb[:max_video_len].unsqueeze(0).expand(batch_size, -1, -1, -1)  # [batch_size, max_video_len, 1, dim]
-        x_f = x_f + time_pos_emb * mask
+        time_pos_emb = self.time_pos_emb[:max_length].unsqueeze(0).expand(batch_size, -1, -1, -1)  # [batch_size, max_length, 1, dim]
+        if mask is not None:
+            time_pos_emb = time_pos_emb * mask.unsqueeze(-1).unsqueeze(-1)
+
+        # Apply the position embeddings
+        x_f = x_f + time_pos_emb
 
         # Flatten the frames
         x_f = rearrange(x_f, 'b T n d -> b (T n) d')
