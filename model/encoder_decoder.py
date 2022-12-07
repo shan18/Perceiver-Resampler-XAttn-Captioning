@@ -139,10 +139,12 @@ class TextGenerator(nn.Module):
 
         text_embeddings = self.lm.transformer.wte(tokens)  # (batch_size, n_tokens, 768)
         embeddings = torch.cat((video_embeddings, text_embeddings), dim=1)  # (batch_size, n_frames + n_tokens, 768)
-        logits = self.lm(inputs_embeds=embeddings, attention_mask=mask).logits  # (batch_size, n_frames + n_tokens, vocab_size)
+        logits = self.lm(
+            inputs_embeds=embeddings, attention_mask=mask
+        ).logits  # (batch_size, n_frames + n_tokens, vocab_size)
 
         # Consider logits only for the text tokens
-        logits = logits[:, video_embeddings.shape[1] - 1:-1]  # (batch_size, n_tokens, vocab_size)
+        logits = logits[:, video_embeddings.shape[1] - 1 : -1]  # (batch_size, n_tokens, vocab_size)
 
         return logits
 
@@ -169,7 +171,10 @@ class VideoTextModel(nn.Module):
         self.vision_encoder = VisionEncoder(**vision_encoder_cfg)
         self.resampler = PerceiverResampler(self.vision_encoder.dim, **resampler_cfg)
         self.text_generator = TextGenerator(
-            text_generator_cfg.pretrained_name, text_generator_cfg.trainable, self.resampler.dim, **text_generator_cfg['xattn']
+            text_generator_cfg.pretrained_name,
+            text_generator_cfg.trainable,
+            self.vision_encoder.dim,
+            **text_generator_cfg['xattn']
         )
 
     def _create_video_mask(self, video_length):
@@ -183,7 +188,9 @@ class VideoTextModel(nn.Module):
         """
         batch_size = video_length.shape[0]
         max_length = video_length.max().item()
-        mask = torch.arange(max_length, device=video_length.device).expand(batch_size, max_length) < video_length.unsqueeze(1)
+        mask = torch.arange(max_length, device=video_length.device).expand(
+            batch_size, max_length
+        ) < video_length.unsqueeze(1)
         return mask
 
     def forward(self, video, video_length, tokens=None, tokens_mask=None):
@@ -197,6 +204,8 @@ class VideoTextModel(nn.Module):
         # Generate text
         text_mask = torch.cat((video_mask.float(), tokens_mask), dim=1)
         # FIXME: Insert a learnable parameter between GPT and CLIP embeddings
-        text_output = self.text_generator(video_embeddings.mean(dim=2), resampled_embeddings, tokens=tokens, mask=text_mask)
+        text_output = self.text_generator(
+            video_embeddings.mean(dim=2), resampled_embeddings, tokens=tokens, mask=text_mask
+        )
 
         return text_output
