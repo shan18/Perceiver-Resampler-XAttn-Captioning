@@ -37,7 +37,7 @@ class Trainer:
         os.makedirs(self.log_dir, exist_ok=True)
 
         self.tokenizer = tokenizer
-        self.bleu_fn = hf_evaluate.load('bleu')
+        self.bleu_fn = hf_evaluate.load('bleu', experiment_id=exp_name)
 
     def _setup_loss(self):
         """Create the loss function"""
