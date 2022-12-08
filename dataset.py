@@ -50,8 +50,7 @@ class MLSLTDataset(Dataset):
     def _process_text(self, text):
         # Convert the text to tokens
         tokenized_text = self.tokenizer(
-            text + f' {self.tokenizer.eos_token}',
-            add_prefix_space=True,
+            f'{self.tokenizer.bos_token} ' + text + f' {self.tokenizer.eos_token}',
             max_length=self.max_length,
             truncation=True,
             padding='max_length',
