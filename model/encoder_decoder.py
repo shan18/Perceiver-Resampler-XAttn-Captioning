@@ -1,5 +1,4 @@
-from sys import prefix
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional
 
 import torch
 from einops import rearrange
@@ -161,7 +160,32 @@ class TextGenerator(nn.Module):
 
 
 class TransformerMapper(nn.Module):
+    """Model to map embedings from clip to gpt.
+
+    Args:
+        dim_embeding: input feature dimension
+        prefix_length: no. of patches == 50
+        clip_length: no. of patches == 50
+        feature_avg_mode: indicates the method of feature averaging to be used before sending to transformer
+        num_layers: no. of transformer encoder layers present in transformer encoder
+    """    
+    def __init__(self, dim_embedding: int, prefix_length: int, clip_length: int, feature_avg_mode: str, num_layers: int = 8):
+        super(TransformerMapper, self).__init__()
+        self.clip_length = clip_length
+        self.feature_avg_mode = feature_avg_mode
+        encoder_layer = nn.TransformerEncoderLayer(dim_embedding, 8, batch_first=True)
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.linear = nn.Linear(
+            prefix_length * dim_embedding, dim_embedding
+        ) 
     def forward(self, x, mask):
+        """
+        Args:
+            video_embeddings: video embeddings with shape (batch_size, n_frames, 50, 768)
+            mask: Attention masks with shape (batch_size, n_frames + n_tokens)
+        Returns:
+            Mapped embeddings
+        """
         if self.feature_avg_mode == 'mean':
             x = x.mean(dim=2)
         elif self.feature_avg_mode == 'linear':
@@ -172,15 +196,7 @@ class TransformerMapper(nn.Module):
         )  
         return out
 
-    def __init__(self, dim_embedding: int, prefix_length: int, clip_length: int, feature_avg_mode: str, num_layers: int = 8):
-        super(TransformerMapper, self).__init__()
-        self.clip_length = clip_length
-        self.feature_avg_mode = feature_avg_mode
-        encoder_layer = nn.TransformerEncoderLayer(dim_embedding, 8, batch_first=True)
-        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
-        self.linear = nn.Linear(
-            prefix_length * dim_embedding, dim_embedding
-        ) 
+
 
 class VideoTextModel(nn.Module):
     """Model to encode the video frames and generate the text.
@@ -189,6 +205,7 @@ class VideoTextModel(nn.Module):
         vision_encoder_cfg: config for the vision encoder
         resampler_cfg: config for the resampler
         text_generator_cfg: config for the text generator
+        mapper_cfg: config for the mapper in between clip and GPT
         cfg: full model config. Redundant, but useful when saving and restoring the checkpoint
     """
 
@@ -251,7 +268,7 @@ class VideoTextModel(nn.Module):
     def forward(self, video, video_length, tokens=None, tokens_mask=None):
         # Encode video
         video_mask = self._create_video_mask(video_length)
-        video_embeddings = self.vision_encoder(video, mask=video_mask)  # already masked
+        video_embeddings = self.vision_encoder(video, mask=video_mask) 
 
         # Resample video embeddings
         resampled_embeddings = None
