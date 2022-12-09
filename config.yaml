@@ -28,7 +28,7 @@ model:
     prefix_length: 50
     clip_length: 50
     feature_avg_mode: mean 
-    
+
   text:
     pretrained_name: gpt2 # Pre-trained weights of the text generator found on huggingface
     trainable: false
@@ -77,7 +77,7 @@ dataset:
     shuffle: true
 
 trainer:
-  epochs: 100
+  epochs: 40
   exp_dir: null
   exp_name: ${name}
   save_test_results: true # Save the test results in a json file
