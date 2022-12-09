@@ -116,7 +116,7 @@ class PerceiverResampler(nn.Module):
 
         self._update_trainable_state(trainable)
 
-    def _update_trainable_state(self, trainable: bool = False):
+    def _update_trainable_state(self, trainable: bool = True):
         for param in self.parameters():
             param.requires_grad = trainable
 
