@@ -5,7 +5,6 @@ import torch
 from einops import rearrange
 from omegaconf import DictConfig
 from torch import nn
-from torch.nn import functional as nnf
 from transformers import CLIPVisionModel, GPT2LMHeadModel, logging
 
 from .gated_cross_attention import ModifiedLMBlock
