@@ -1,9 +1,11 @@
-from typing import List, Optional
+from sys import prefix
+from typing import List, Optional, Tuple, Union
 
 import torch
 from einops import rearrange
 from omegaconf import DictConfig
 from torch import nn
+from torch.nn import functional as nnf
 from transformers import CLIPVisionModel, GPT2LMHeadModel, logging
 
 from .gated_cross_attention import ModifiedLMBlock
@@ -48,7 +50,6 @@ class VisionEncoder(nn.Module):
         video = rearrange(video, 'b t ... -> (b t) ...')
         embeddings = self.vision(pixel_values=video).last_hidden_state
         embeddings = rearrange(embeddings, '(b t) ... -> b t ...', b=batch_size)
-
         # Mask the embeddings
         if mask is not None:
             embeddings[~mask] = 0
@@ -160,6 +161,28 @@ class TextGenerator(nn.Module):
         return logits
 
 
+class TransformerMapper(nn.Module):
+    def forward(self, x, mask):
+        if self.feature_avg_mode == 'mean':
+            x = x.mean(dim=2)
+        elif self.feature_avg_mode == 'linear':
+            x = rearrange(x, 'b t p e -> b t (p e)')
+            x = self.linear(x)
+        out = self.transformer(
+            x, src_key_padding_mask=~mask
+        )  
+        return out
+
+    def __init__(self, dim_embedding: int, prefix_length: int, clip_length: int, feature_avg_mode: str, num_layers: int = 8):
+        super(TransformerMapper, self).__init__()
+        self.clip_length = clip_length
+        self.feature_avg_mode = feature_avg_mode
+        encoder_layer = nn.TransformerEncoderLayer(dim_embedding, 8, batch_first=True)
+        self.transformer = nn.TransformerEncoder(encoder_layer, num_layers=num_layers)
+        self.linear = nn.Linear(
+            prefix_length * dim_embedding, dim_embedding
+        ) 
+
 class VideoTextModel(nn.Module):
     """Model to encode the video frames and generate the text.
 
@@ -174,6 +197,7 @@ class VideoTextModel(nn.Module):
         self,
         vision_encoder_cfg: DictConfig,
         text_generator_cfg: DictConfig,
+        mapper_cfg: DictConfig,
         resampler_cfg: Optional[DictConfig] = None,
         cfg: Optional[DictConfig] = None,
     ):
@@ -201,6 +225,14 @@ class VideoTextModel(nn.Module):
         if self.enable_resampler_xattn:
             self.resampler = PerceiverResampler(self.vision_encoder.dim, **resampler_cfg)
 
+        self.mapper_cfg = mapper_cfg
+        self.mapper = TransformerMapper(
+            mapper_cfg.dim_embedding,
+            mapper_cfg.prefix_length,
+            mapper_cfg.clip_length,
+            mapper_cfg.feature_avg_mode
+        )
+
     def _create_video_mask(self, video_length):
         """Create a mask for the video embeddings.
 
@@ -220,18 +252,20 @@ class VideoTextModel(nn.Module):
     def forward(self, video, video_length, tokens=None, tokens_mask=None):
         # Encode video
         video_mask = self._create_video_mask(video_length)
-        video_embeddings = self.vision_encoder(video, mask=video_mask)
+        video_embeddings = self.vision_encoder(video, mask=video_mask)  # already masked
 
         # Resample video embeddings
         resampled_embeddings = None
         if self.enable_resampler_xattn:
             resampled_embeddings = self.resampler(video_embeddings, mask=video_mask)
 
+        video_embeddings = self.mapper(video_embeddings, mask=video_mask)
+
         # Generate text
         text_mask = torch.cat((video_mask.float(), tokens_mask), dim=1)
         # FIXME: Insert a learnable parameter between GPT and CLIP embeddings
         text_output = self.text_generator(
-            video_embeddings.mean(dim=2), resampler_embeddings=resampled_embeddings, tokens=tokens, mask=text_mask
+            video_embeddings, resampler_embeddings=resampled_embeddings, tokens=tokens, mask=text_mask
         )
 
         return text_output
