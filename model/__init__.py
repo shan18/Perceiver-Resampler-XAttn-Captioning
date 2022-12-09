@@ -28,7 +28,7 @@ def build_model(model_cfg: Optional[DictConfig] = None, pretrained_name: Optiona
     model = VideoTextModel(
         vision_encoder_cfg=model_cfg.vision,
         text_generator_cfg=model_cfg.text,
-        mapper_cfg=model_cfg.mapper,
+        mapper_cfg=model_cfg.mapper if model_cfg.enable_mapper else None,
         resampler_cfg=model_cfg.resampler if model_cfg.enable_resampler_xattn else None,
         cfg=model_cfg,
     ).to(device)

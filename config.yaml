@@ -7,11 +7,19 @@ mode: train # train or test
 pretrained_name: null # path to checkpoint. Mandatory for test mode.
 
 model:
+  enable_mapper: true # Enable the mapper module
   enable_resampler_xattn: true # Enable the resampler and the gated xattn module
 
   vision:
     pretrained_name: openai/clip-vit-base-patch32 # Pre-trained weights of the vision encoder found on huggingface
     trainable: false
+
+  mapper:
+    depth: 8
+    heads: 8
+    dim_feedforward: 2048
+    feature_avg_mode: mean # Can be ['mean', 'mlp']
+    trainable: true
 
   resampler:
     depth: 6
@@ -22,12 +30,6 @@ model:
     ff_mult: 1
     activation: gelu
     trainable: true
-
-  mapper:
-    dim_embedding: 768
-    prefix_length: 50
-    clip_length: 50
-    feature_avg_mode: mean 
 
   text:
     pretrained_name: gpt2 # Pre-trained weights of the text generator found on huggingface
