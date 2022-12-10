@@ -23,7 +23,6 @@ class CheckpointManager:
         checkpoint_dir: str,
         exp_name: str,
         monitor: str,
-        mode: str,
         save_top_k: int,
         optimizer: torch.optim.Optimizer = None,
         scheduler: torch.optim.lr_scheduler._LRScheduler = None,
@@ -38,7 +37,7 @@ class CheckpointManager:
         self.checkpoint_dir = checkpoint_dir
         self.exp_name = exp_name
         self.monitor = monitor
-        self.mode = mode
+        self.mode = 'min' if monitor.endswith('loss') else 'max'
         self.save_top_k = save_top_k
         self.optimizer = optimizer
         self.scheduler = scheduler

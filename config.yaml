@@ -85,7 +85,6 @@ trainer:
   save_test_results: true # Save the test results in a json file
   checkpoint_callback_params:
     monitor: val_bleu # Can be ['train_loss', 'val_loss', 'val_bleu']
-    mode: max
     save_top_k: 5
 
 hydra:
