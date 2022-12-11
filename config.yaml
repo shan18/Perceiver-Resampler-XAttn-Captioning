@@ -84,7 +84,7 @@ trainer:
   exp_dir: null
   exp_name: ${name}
   test:
-    decoding_strategy: nucleus # Can be ['greedy', 'nucleus', 'beam']
+    decoding_strategy: beam # Can be ['greedy', 'nucleus', 'beam']
     max_length: 100
     temperature: 0.9
     top_p: 0.8 # Only for nucleus sampling
