@@ -12,3 +12,6 @@ isort
 omegaconf
 hydra-core
 evaluate
+nltk
+absl-py
+rouge_score

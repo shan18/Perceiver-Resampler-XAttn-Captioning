@@ -156,32 +156,20 @@ class Trainer:
             pred = pred.strip()
             if pred != '':
                 valid_predictions.append(pred)
-                valid_targets.append([target.strip()])
+                valid_targets.append([target])
 
-        bleu1_score = (
-            0
-            if len(valid_predictions) == 0
-            else self.bleu_fn.compute(predictions=valid_predictions, references=valid_targets, max_order=1)['bleu']
-        )  # type: ignore[reportOptionalSubscript]
-
-        bleu4_score = (
-            0
-            if len(valid_predictions) == 0
-            else self.bleu_fn.compute(predictions=valid_predictions, references=valid_targets, max_order=4)['bleu']
-        )  # type: ignore[reportOptionalSubscript]
-
-        rouge_score = (
-            0
-            if len(valid_predictions) == 0
-            else self.rouge_fn.compute(predictions=valid_predictions, references=valid_targets)['rougeL']
-        )  # type: ignore[reportOptionalSubscript]
+        bleu1, bleu4, rouge = 0, 0, 0
+        if len(valid_predictions) > 0:
+            bleu1 = self.bleu_fn.compute(predictions=valid_predictions, references=valid_targets, max_order=1)['bleu']  # type: ignore[reportOptionalSubscript]
+            bleu4 = self.bleu_fn.compute(predictions=valid_predictions, references=valid_targets, max_order=4)['bleu']  # type: ignore[reportOptionalSubscript]
+            rouge = self.rouge_fn.compute(predictions=valid_predictions, references=valid_targets)['rougeL']  # type: ignore[reportOptionalSubscript]
 
         # Get the weighted average of the bleu score with the empty predictions
-        bleu1_score = (bleu1_score * len(valid_predictions)) / len(predictions)
-        bleu4_score = (bleu4_score * len(valid_predictions)) / len(predictions)
-        rouge_score = (rouge_score * len(valid_predictions)) / len(predictions)
+        bleu1 = (bleu1 * len(valid_predictions)) / len(predictions)
+        bleu4 = (bleu4 * len(valid_predictions)) / len(predictions)
+        rouge = (rouge * len(valid_predictions)) / len(predictions)
 
-        return bleu1_score, bleu4_score, rouge_score
+        return bleu1, bleu4, rouge
 
     def evaluate(self, loader, data_type='dev'):
         self.model.eval()
@@ -258,7 +246,8 @@ class Trainer:
                 )
 
                 predictions.extend(generated_text)
-                targets.extend(self.tokenizer.batch_decode(tokens.tolist(), skip_special_tokens=True))
+                tokens[tokens_mask == 0] = self.tokenizer.pad_token_id  # This is done to make tokenizer ignore the pad tokens
+                targets.extend([x.strip() for x in self.tokenizer.batch_decode(tokens, skip_special_tokens=True)])
                 video_paths.extend(video_path)
 
                 # Update progress bar
@@ -267,13 +256,13 @@ class Trainer:
         pbar.add(1)
 
         # Compute the bleu score
-        bleu1_score, bleu4_score, rouge_score = self._compute_metrics(predictions, targets)
+        bleu1, bleu4, rouge = self._compute_metrics(predictions, targets)
 
         print(
             f'Test set: Average loss: {test_loss:.4f} '
-            f'- Bleu1 Score: {bleu1_score:.4f} '
-            f'- Bleu4 Score: {bleu4_score:.4f} '
-            f'- Rouge Score: {rouge_score:.4f}\n'
+            f'- Bleu1: {bleu1:.4f} '
+            f'- Bleu4: {bleu4:.4f} '
+            f'- Rouge: {rouge:.4f}\n'
         )
 
         results = [

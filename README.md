@@ -5,7 +5,7 @@
 Install all the project dependencies with
 
 ```
-$ pip install -r requirements.txt
+$ python3 -m pip install -r requirements.txt
 ```
 
 ## Training
