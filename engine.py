@@ -16,7 +16,7 @@ from transformers import (
 )
 
 from utils import CheckpointManager, ProgressBar
-from utils.decoding import generate_nucleus_sampling
+from utils.decoding import generate_beam, generate_nucleus_sampling
 
 
 class Trainer:
@@ -215,6 +215,7 @@ class Trainer:
         self,
         loader: DataLoader,
         max_length: int = 100,
+        beam_size: int = 5,
         top_p: Optional[float] = 0.8,
         top_k: Optional[float] = None,
         temperature: Optional[float] = 1.0,
@@ -244,16 +245,28 @@ class Trainer:
                 # Encode video
                 video_embeddings, resampled_embeddings, _ = self.model.encode_video(video, video_lengths)
 
+                # # Get predictions
+                # generated_text = generate_nucleus_sampling(
+                #     self.model,
+                #     self.tokenizer,
+                #     video_embeddings,
+                #     resampled_embeddings,
+                #     number_to_generate=1,
+                #     max_length=max_length,
+                #     top_p=top_p,
+                #     top_k=top_k,
+                #     temperature=temperature,
+                # )
+
                 # Get predictions
-                generated_text = generate_nucleus_sampling(
+                generated_text = generate_beam(
                     self.model,
                     self.tokenizer,
                     video_embeddings,
                     resampled_embeddings,
                     number_to_generate=1,
+                    beam_size=beam_size,
                     max_length=max_length,
-                    top_p=top_p,
-                    top_k=top_k,
                     temperature=temperature,
                 )
 
