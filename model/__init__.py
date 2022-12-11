@@ -21,7 +21,7 @@ def build_model(model_cfg: Optional[DictConfig] = None, pretrained_name: Optiona
             model_cfg.text.xattn.dim_visual = -1  # NOTE: This is a placeholder value. It will be updated in the model
 
     # Remove xattn parameters if resampler is disabled
-    if not model_cfg.enable_resampler_xattn:
+    if not model_cfg.enable_resampler_xattn and 'xattn' in model_cfg.text:
         with open_dict(model_cfg.text):
             del model_cfg.text.xattn
 
