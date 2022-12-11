@@ -121,7 +121,7 @@ def main(cfg):
         tokenizer = train_dataset.tokenizer
         text_max_length = train_dataset.max_length
     else:
-        test_dataset, test_loader = create_dataset(**cfg.dataset.test_ds)
+        test_dataset, test_loader = create_dataset(**cfg.dataset.test_ds, batch_size=1, num_workers=1, shuffle=False)
         tokenizer = test_dataset.tokenizer
         text_max_length = test_dataset.max_length
 
@@ -134,7 +134,6 @@ def main(cfg):
         cfg.trainer.exp_dir,
         cfg.trainer.exp_name,
         cfg.trainer.checkpoint_callback_params,
-        cfg.trainer.save_test_results,
         device=device,
     )
 
@@ -143,8 +142,8 @@ def main(cfg):
         print('Training...')
         trainer.fit(train_loader, dev_loader, cfg.model.optimizer, cfg.trainer.epochs)  # type: ignore[reportUnboundVariable]
     else:
-        print('Evaluating...')
-        trainer.evaluate(test_loader, data_type='test')  # type: ignore[reportUnboundVariable]
+        print('Testing...')
+        trainer.inference(test_loader, **cfg.trainer.test)  # type: ignore[reportUnboundVariable]
 
 
 if __name__ == '__main__':
