@@ -9,7 +9,11 @@ from omegaconf import DictConfig
 from torch import nn
 from torch.optim import Adam, AdamW
 from torch.utils.data import DataLoader
-from transformers import PreTrainedTokenizer, get_cosine_schedule_with_warmup
+from transformers import (
+    PreTrainedTokenizer,
+    get_constant_schedule_with_warmup,
+    get_cosine_schedule_with_warmup,
+)
 
 from utils import CheckpointManager, ProgressBar
 from utils.decoding import generate_nucleus_sampling
@@ -66,7 +70,10 @@ class Trainer:
         # Setup scheduler
         self.scheduler = None
         if optimizer_cfg['scheduler']['name'] is not None:
-            assert optimizer_cfg['scheduler']['name'] in ['CosineAnnealing'], 'Scheduler must be CosineAnnealing'
+            assert optimizer_cfg['scheduler']['name'] in [
+                'CosineAnnealing',
+                'Linear',
+            ], 'Scheduler must be CosineAnnealing or Linear'
 
             total_steps = num_steps_per_epoch * epochs
             cfg_warmup_steps = optimizer_cfg['scheduler']['warmup_steps']
@@ -86,6 +93,11 @@ class Trainer:
                     self.optimizer,
                     num_warmup_steps=warmup_steps,
                     num_training_steps=total_steps,
+                )
+            elif optimizer_cfg['scheduler']['name'] == 'Linear':
+                self.scheduler = get_constant_schedule_with_warmup(
+                    self.optimizer,
+                    num_warmup_steps=warmup_steps,
                 )
 
         # Restore states from checkpoint
@@ -246,7 +258,9 @@ class Trainer:
                 )
 
                 predictions.extend(generated_text)
-                tokens[tokens_mask == 0] = self.tokenizer.pad_token_id  # This is done to make tokenizer ignore the pad tokens
+                tokens[
+                    tokens_mask == 0
+                ] = self.tokenizer.pad_token_id  # This is done to make tokenizer ignore the pad tokens
                 targets.extend([x.strip() for x in self.tokenizer.batch_decode(tokens, skip_special_tokens=True)])
                 video_paths.extend(video_path)
 
