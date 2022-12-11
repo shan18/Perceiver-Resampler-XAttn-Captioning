@@ -131,13 +131,29 @@ class TextGenerator(nn.Module):
             for param in xattn.xattn_block.parameters():
                 param.requires_grad = True
 
-    def forward(self, video_embeddings, resampler_embeddings=None, tokens=None, mask: torch.FloatTensor = None):
+    def get_token_embeddings(self, tokens: torch.LongTensor):
+        """Get the token embeddings from model's embedding layer"""
+        assert tokens.dim() in [1, 2], "Tokens should be of shape (batch_size, n_tokens) or (n_tokens,)"
+        if tokens.dim() == 1:
+            tokens = tokens.unsqueeze(0)
+
+        return self.lm.transformer.wte(tokens)
+
+    def forward(
+        self,
+        video_embeddings,
+        resampler_embeddings=None,
+        tokens=None,
+        mask: torch.FloatTensor = None,
+        inference_mode: bool = False,
+    ):
         """
         Args:
             video_embeddings: video embeddings with shape (batch_size, n_frames, 768)
             resampler_embeddings: video embeddings with shape (batch_size, num_latents, 768)
             tokens: text tokens with shape (batch_size, n_tokens)
             mask: Attention masks with shape (batch_size, n_frames + n_tokens)
+            inference_mode: return only the last logit in inference mode
 
         Returns:
             Logits of the output transcript
@@ -148,14 +164,16 @@ class TextGenerator(nn.Module):
             for xattn in self.modified_layers:
                 xattn.condition(resampler_embeddings, None)
 
-        text_embeddings = self.lm.transformer.wte(tokens)  # (batch_size, n_tokens, 768)
+        text_embeddings = self.get_token_embeddings(tokens)  # (batch_size, n_tokens, 768)
         embeddings = torch.cat((video_embeddings, text_embeddings), dim=1)  # (batch_size, n_frames + n_tokens, 768)
         logits = self.lm(
             inputs_embeds=embeddings, attention_mask=mask
         ).logits  # (batch_size, n_frames + n_tokens, vocab_size)
 
-        # Consider logits only for the text tokens
-        logits = logits[:, video_embeddings.shape[1] - 1 : -1]  # (batch_size, n_tokens, vocab_size)
+        if inference_mode:  # Return only the last logit
+            logits = logits[:, -1, :]
+        else:  # Consider logits only for the text tokens
+            logits = logits[:, video_embeddings.shape[1] - 1 : -1]  # (batch_size, n_tokens, vocab_size)
 
         return logits
 
@@ -284,7 +302,16 @@ class VideoTextModel(nn.Module):
         ) < video_length.unsqueeze(1)
         return mask
 
-    def forward(self, video, video_length, tokens=None, tokens_mask=None):
+    def encode_video(self, video, video_length):
+        """Encode the video frames.
+
+        Args:
+            video: video frames with shape (batch_size, n_frames, 3, 224, 224)
+            video_length: length of the each video in the batch without padding
+
+        Returns:
+            Encoded video embeddings passed through the mapper and the resampler
+        """
         # Encode video
         video_mask = self._create_video_mask(video_length)
         video_embeddings = self.vision_encoder(video, mask=video_mask)
@@ -298,6 +325,12 @@ class VideoTextModel(nn.Module):
         resampled_embeddings = None
         if self.enable_resampler_xattn:
             resampled_embeddings = self.resampler(video_embeddings, mask=video_mask)
+
+        return video_embeddings_mapped, resampled_embeddings, video_mask
+
+    def forward(self, video, video_length, tokens=None, tokens_mask=None):
+        # Encode video
+        video_embeddings_mapped, resampled_embeddings, video_mask = self.encode_video(video, video_length)
 
         # Generate text
         text_mask = torch.cat((video_mask.float(), tokens_mask), dim=1)

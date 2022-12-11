@@ -12,6 +12,7 @@ from torch.utils.data import DataLoader
 from transformers import PreTrainedTokenizer, get_cosine_schedule_with_warmup
 
 from utils import CheckpointManager, ProgressBar
+from utils.decoding import generate_nucleus_sampling
 
 
 class Trainer:
@@ -22,8 +23,7 @@ class Trainer:
         text_max_length: int,
         log_dir: str,
         exp_name: str,
-        checkpoint_callback_params: Union[dict, DictConfig],
-        save_test_results: bool = True,
+        checkpoint_callback_params: Optional[Union[dict, DictConfig]] = None,
         device: Optional[str] = 'cpu',
     ):
         self.device = device
@@ -32,7 +32,6 @@ class Trainer:
         self.text_max_length = text_max_length
         self.exp_name = exp_name
         self.checkpoint_callback_params = checkpoint_callback_params
-        self.save_test_results = save_test_results
         self.log_dir = os.path.join(log_dir, exp_name)
         os.makedirs(self.log_dir, exist_ok=True)
 
@@ -94,6 +93,7 @@ class Trainer:
             start_epoch = self._restore_state(restore_ckpt)
 
         # Create checkpoint manager
+        assert self.checkpoint_callback_params is not None, 'Checkpoint callback params must be specified'
         self.ckpt_manager = CheckpointManager(
             self.model,
             os.path.join(self.log_dir, 'checkpoints'),
@@ -173,10 +173,8 @@ class Trainer:
             self._setup_loss()
 
         eval_loss = 0
-        prediction_ids, target_ids, video_paths = [], [], []
-
         with torch.no_grad():
-            for video, video_lengths, tokens, tokens_mask, video_path in loader:
+            for video, video_lengths, tokens, tokens_mask, _ in loader:
                 video = video.to(self.device)
                 video_lengths = video_lengths.to(self.device)
                 tokens = tokens.to(self.device)
@@ -190,58 +188,77 @@ class Trainer:
                 loss = self.criterion(outputs, tokens)
                 eval_loss += loss.item()
 
-                # Get sentence predictions for computing BLEU score
-                outputs_ids = torch.argmax(outputs, dim=1)  # (batch_size, n_tokens)
-                prediction_ids.extend(outputs_ids.tolist())
+        eval_loss /= len(loader)
+        print(f'{"Validation" if data_type == "dev" else "Test"} set: ' f'Average loss: {eval_loss:.4f}')
+        return eval_loss
 
-                # Remove the padding tokens from the targets
-                target_ids.extend([t[:l] for t, l in zip(tokens.tolist(), tokens_mask.sum(dim=1).tolist())])
+    def inference(
+        self,
+        loader: DataLoader,
+        max_length: int = 100,
+        top_p: Optional[float] = 0.8,
+        top_k: Optional[float] = None,
+        temperature: Optional[float] = 1.0,
+    ):
+        """Test the model.
 
+        Args:
+            loader: data loader
+            max_length: maximum length of each sample
+            top_p: top-p sampling
+            top_k: top-k sampling
+            temperature: temperature for sampling
+        """
+        self.model.eval()
+
+        test_loss = 0
+        predictions, targets, video_paths = [], [], []
+
+        with torch.no_grad():
+            for video, video_lengths, tokens, tokens_mask, video_path in loader:
+                video = video.to(self.device)
+                video_lengths = video_lengths.to(self.device)
+                tokens = tokens.to(self.device)
+                tokens_mask = tokens_mask.to(self.device)
+
+                # Encode video
+                video_embeddings, resampled_embeddings, video_mask = self.model.encode_video(video, video_lengths)
+
+                # Get predictions
+                generated_text = generate_nucleus_sampling(
+                    self.model,
+                    self.tokenizer,
+                    video_embeddings,
+                    resampled_embeddings,
+                    mask=video_mask,
+                    number_to_generate=1,
+                    max_length=max_length,
+                    top_p=top_p,
+                    top_k=top_k,
+                    temperature=temperature,
+                )
+
+                predictions.extend(generated_text)
+                targets.extend(self.tokenizer.batch_decode(tokens.tolist(), skip_special_tokens=True))
                 video_paths.extend(video_path)
 
-        # Remove tokens from predictions after EOS
-        prediction_ids = [
-            pred_id[: pred_id.index(self.tokenizer.eos_token_id)]
-            if self.tokenizer.eos_token_id in pred_id
-            else pred_id[: self.text_max_length]
-            for pred_id in prediction_ids
-        ]
-
-        # Get the prediction and target strings
-        predictions = self.tokenizer.batch_decode(prediction_ids, skip_special_tokens=True)
-        targets = self.tokenizer.batch_decode(target_ids, skip_special_tokens=True)
-
-        # Compute the average loss and bleu score
-        eval_loss /= len(loader)
+        # Compute the bleu score
         bleu_score = self._compute_bleu(predictions, targets)
 
-        # Store the results in a json format
-        results = []
-        if data_type == 'test' and self.save_test_results:
-            results.extend(
-                [
-                    {
-                        'video_path': video_paths[i],
-                        'prediction': predictions[i],
-                        'target': targets[i],
-                    }
-                    for i in range(len(video_paths))
-                ]
-            )
+        print(f'Test set: Average loss: {test_loss:.4f} - Bleu Score: {bleu_score:.4f}\n')
 
-        print(
-            f'{"Validation" if data_type == "dev" else "Test"} set: '
-            f'Average loss: {eval_loss:.4f} - '
-            f'Bleu Score: {bleu_score:.4f}\n'
-        )
+        results = [
+            {
+                'video_path': video_paths[i],
+                'prediction': predictions[i],
+                'target': targets[i],
+            }
+            for i in range(len(video_paths))
+        ]
 
-        # Write the results to a json file
-        if data_type == 'test' and self.save_test_results:
-            with open(os.path.join(self.log_dir, f'inference.json'), 'w') as f:
-                json.dump(results, f, indent=2)
-            print(f'Inference results saved to {os.path.join(self.log_dir, "inference.json")}')
-
-        return eval_loss, bleu_score
+        with open(os.path.join(self.log_dir, f'inference.json'), 'w') as f:
+            json.dump(results, f, indent=2)
+        print(f'Inference results saved to {os.path.join(self.log_dir, "inference.json")}')
 
     def fit(
         self,
@@ -256,10 +273,10 @@ class Trainer:
         for epoch in range(start_epoch, epochs + 1):
             print(f'\nEpoch {epoch}:')
             train_loss = self.train(train_loader)
-            eval_loss, eval_bleu = self.evaluate(dev_loader)
+            eval_loss = self.evaluate(dev_loader)
 
             # Log the progress
-            self.ckpt_manager.log(epoch, train_loss, eval_loss, eval_bleu)
+            self.ckpt_manager.log(epoch, train_loss, eval_loss)
 
         # Store the best checkpoint with the the experiment name
         self.ckpt_manager.save_best_state()

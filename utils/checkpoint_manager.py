@@ -30,8 +30,7 @@ class CheckpointManager:
         assert monitor in [
             'train_loss',
             'val_loss',
-            'val_bleu',
-        ], 'Monitor must be either train_loss, val_loss or val_bleu'
+        ], 'Monitor must be either train_loss, val_loss'
 
         self.model = model
         self.checkpoint_dir = checkpoint_dir
@@ -43,17 +42,16 @@ class CheckpointManager:
         self.scheduler = scheduler
         self.recent_checkpoints = []
 
-        self.metrics = {'train_loss': [], 'val_loss': [], 'val_bleu': []}
+        self.metrics = {'train_loss': [], 'val_loss': []}
         self.best_score = float('inf') if self.mode == 'min' else float('-inf')
 
         os.makedirs(self.checkpoint_dir, exist_ok=True)
 
-    def _log_metrics(self, train_loss: float, eval_loss: float, eval_bleu: float):
+    def _log_metrics(self, train_loss: float, eval_loss: float):
         self.metrics['train_loss'].append(train_loss)
         self.metrics['val_loss'].append(eval_loss)
-        self.metrics['val_bleu'].append(eval_bleu)
 
-    def log(self, epoch: int, train_loss: float, eval_loss: float, eval_bleu: float):
+    def log(self, epoch: int, train_loss: float, eval_loss: float):
         """Logs the score and saves the checkpoint if the score is the best so far.
 
         Args:
@@ -61,7 +59,7 @@ class CheckpointManager:
             score: score to be logged
         """
 
-        self._log_metrics(train_loss, eval_loss, eval_bleu)
+        self._log_metrics(train_loss, eval_loss)
         score = self.metrics[self.monitor][-1]
         if (self.mode == 'min' and score < self.best_score) or (self.mode == 'max' and score > self.best_score):
             print(f'{self.monitor} improved from {self.best_score:.4f} to {score:.4f}')
