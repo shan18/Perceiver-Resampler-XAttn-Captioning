@@ -74,9 +74,6 @@ dataset:
   test_ds: # Mandatory for test mode
     video_dir: ???
     json_path: ???
-    batch_size: 16
-    num_workers: 4
-    shuffle: true
 
 trainer:
   epochs: 40
