@@ -57,6 +57,10 @@ model:
       min_lr: 1e-6
 
 dataset:
+  # List of sign languages to use for training
+  # Can be ['zh', 'uk', 'ru', 'bg', 'is', 'de', 'it', 'sv', 'lt', 'en']
+  sign_languages: ['en']
+
   train_ds:
     video_dir: ???
     json_path: ???
