@@ -16,7 +16,7 @@ from transformers import (
 )
 
 from utils import CheckpointManager, ProgressBar
-from utils.decoding import generate_beam, generate_nucleus_sampling
+from utils.decoding import decode_output
 
 
 class Trainer:
@@ -214,11 +214,12 @@ class Trainer:
     def inference(
         self,
         loader: DataLoader,
+        decoding_strategy: str,
         max_length: int = 100,
-        beam_size: int = 5,
+        temperature: float = 1.0,
         top_p: Optional[float] = 0.8,
-        top_k: Optional[float] = None,
-        temperature: Optional[float] = 1.0,
+        top_k: Optional[int] = None,
+        beam_width: Optional[int] = 5,
     ):
         """Test the model.
 
@@ -245,32 +246,21 @@ class Trainer:
                 # Encode video
                 video_embeddings, resampled_embeddings, _ = self.model.encode_video(video, video_lengths)
 
-                # # Get predictions
-                # generated_text = generate_nucleus_sampling(
-                #     self.model,
-                #     self.tokenizer,
-                #     video_embeddings,
-                #     resampled_embeddings,
-                #     number_to_generate=1,
-                #     max_length=max_length,
-                #     top_p=top_p,
-                #     top_k=top_k,
-                #     temperature=temperature,
-                # )
-
                 # Get predictions
-                generated_text = generate_beam(
+                decoded_prediction = decode_output(
                     self.model,
                     self.tokenizer,
                     video_embeddings,
                     resampled_embeddings,
-                    number_to_generate=1,
-                    beam_size=beam_size,
+                    decoding_strategy,
                     max_length=max_length,
                     temperature=temperature,
+                    top_p=top_p,
+                    top_k=top_k,
+                    beam_width=beam_width,
                 )
 
-                predictions.extend(generated_text)
+                predictions.extend(decoded_prediction)
                 tokens[
                     tokens_mask == 0
                 ] = self.tokenizer.pad_token_id  # This is done to make tokenizer ignore the pad tokens
