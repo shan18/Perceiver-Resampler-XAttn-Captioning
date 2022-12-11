@@ -37,6 +37,7 @@ class Trainer:
 
         self.tokenizer = tokenizer
         self.bleu_fn = hf_evaluate.load('bleu', experiment_id=exp_name)
+        self.rouge_fn = hf_evaluate.load('rouge', experiment_id=exp_name)
 
     def _setup_loss(self):
         """Create the loss function"""
@@ -147,8 +148,8 @@ class Trainer:
 
         return loss.item()  # type: ignore[reportUnboundVariable]
 
-    def _compute_bleu(self, predictions, targets):
-        """Compute BLEU4 score"""
+    def _compute_metrics(self, predictions, targets):
+        """Compute BLEU1, BLEU4 and ROUGE metrics score"""
         # Remove the empty predictions and their corresponding targets
         valid_predictions, valid_targets = [], []
         for pred, target in zip(predictions, targets):
@@ -157,12 +158,30 @@ class Trainer:
                 valid_predictions.append(pred)
                 valid_targets.append([target.strip()])
 
-        bleu_score = 0 if len(valid_predictions) == 0 else self.bleu_fn.compute(predictions=valid_predictions, references=valid_targets)['bleu']  # type: ignore[reportOptionalSubscript]
+        bleu1_score = (
+            0
+            if len(valid_predictions) == 0
+            else self.bleu_fn.compute(predictions=valid_predictions, references=valid_targets, max_order=1)['bleu']
+        )  # type: ignore[reportOptionalSubscript]
+
+        bleu4_score = (
+            0
+            if len(valid_predictions) == 0
+            else self.bleu_fn.compute(predictions=valid_predictions, references=valid_targets, max_order=4)['bleu']
+        )  # type: ignore[reportOptionalSubscript]
+
+        rouge_score = (
+            0
+            if len(valid_predictions) == 0
+            else self.rouge_fn.compute(predictions=valid_predictions, references=valid_targets)['rougeL']
+        )  # type: ignore[reportOptionalSubscript]
 
         # Get the weighted average of the bleu score with the empty predictions
-        bleu_score = (bleu_score * len(valid_predictions)) / len(predictions)
+        bleu1_score = (bleu1_score * len(valid_predictions)) / len(predictions)
+        bleu4_score = (bleu4_score * len(valid_predictions)) / len(predictions)
+        rouge_score = (rouge_score * len(valid_predictions)) / len(predictions)
 
-        return bleu_score
+        return bleu1_score, bleu4_score, rouge_score
 
     def evaluate(self, loader, data_type='dev'):
         self.model.eval()
@@ -248,9 +267,14 @@ class Trainer:
         pbar.add(1)
 
         # Compute the bleu score
-        bleu_score = self._compute_bleu(predictions, targets)
+        bleu1_score, bleu4_score, rouge_score = self._compute_metrics(predictions, targets)
 
-        print(f'Test set: Average loss: {test_loss:.4f} - Bleu Score: {bleu_score:.4f}\n')
+        print(
+            f'Test set: Average loss: {test_loss:.4f} '
+            f'- Bleu1 Score: {bleu1_score:.4f} '
+            f'- Bleu4 Score: {bleu4_score:.4f} '
+            f'- Rouge Score: {rouge_score:.4f}\n'
+        )
 
         results = [
             {
