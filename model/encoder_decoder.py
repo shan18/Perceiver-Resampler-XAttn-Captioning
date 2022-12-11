@@ -166,6 +166,10 @@ class TextGenerator(nn.Module):
 
         text_embeddings = self.get_token_embeddings(tokens)  # (batch_size, n_tokens, 768)
         embeddings = torch.cat((video_embeddings, text_embeddings), dim=1)  # (batch_size, n_frames + n_tokens, 768)
+
+        if mask is not None:
+            assert mask.shape[1] == embeddings.shape[1], "Mask shape should be (batch_size, n_frames + n_tokens)"
+
         logits = self.lm(
             inputs_embeds=embeddings, attention_mask=mask
         ).logits  # (batch_size, n_frames + n_tokens, vocab_size)

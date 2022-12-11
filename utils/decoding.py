@@ -9,7 +9,6 @@ def generate_nucleus_sampling(
     tokenizer,
     video_embeddings,
     resampled_embeddings,
-    mask: Optional[torch.FloatTensor] = None,
     number_to_generate: int = 1,
     max_length: int = 100,
     top_p: float = 0.8,
@@ -23,7 +22,6 @@ def generate_nucleus_sampling(
         tokenizer: tokenizer for decoding
         video_embeddings: input video embeddings
         resampled_embeddings: resampled video embeddings
-        mask: mask for the video embeddings
         number_to_generate: number of samples to generate
         max_length: maximum length of each sample
         top_p: top-p sampling
@@ -40,13 +38,11 @@ def generate_nucleus_sampling(
     with torch.no_grad():
         for _ in range(number_to_generate):
             tokens = torch.tensor([tokenizer.bos_token_id]).repeat(batch_size, 1).to(device)
-            mask = torch.cat((mask, torch.ones((batch_size, 1)).to(device)), dim=1)
             for _ in range(max_length):
                 logits = model.text_generator(
                     video_embeddings,
                     resampler_embeddings=resampled_embeddings,
                     tokens=tokens,
-                    mask=mask,
                     inference_mode=True,
                 )  # (batch_size, vocab_size)
                 logits /= temperature if temperature > 0 else 1.0
@@ -75,7 +71,7 @@ def generate_nucleus_sampling(
                     break
 
             output_list = list(tokens.squeeze().cpu().numpy())
-            output_text = tokenizer.decode(output_list, skip_special_tokens=True)
+            output_text = tokenizer.decode(output_list, skip_special_tokens=True).strip()
 
             generations.append(output_text)
 

@@ -213,16 +213,17 @@ class Trainer:
 
         test_loss = 0
         predictions, targets, video_paths = [], [], []
+        pbar = ProgressBar(target=len(loader), width=8)
 
         with torch.no_grad():
-            for video, video_lengths, tokens, tokens_mask, video_path in loader:
+            for batch_idx, (video, video_lengths, tokens, tokens_mask, video_path) in enumerate(loader):
                 video = video.to(self.device)
                 video_lengths = video_lengths.to(self.device)
                 tokens = tokens.to(self.device)
                 tokens_mask = tokens_mask.to(self.device)
 
                 # Encode video
-                video_embeddings, resampled_embeddings, video_mask = self.model.encode_video(video, video_lengths)
+                video_embeddings, resampled_embeddings, _ = self.model.encode_video(video, video_lengths)
 
                 # Get predictions
                 generated_text = generate_nucleus_sampling(
@@ -230,7 +231,6 @@ class Trainer:
                     self.tokenizer,
                     video_embeddings,
                     resampled_embeddings,
-                    mask=video_mask,
                     number_to_generate=1,
                     max_length=max_length,
                     top_p=top_p,
@@ -241,6 +241,11 @@ class Trainer:
                 predictions.extend(generated_text)
                 targets.extend(self.tokenizer.batch_decode(tokens.tolist(), skip_special_tokens=True))
                 video_paths.extend(video_path)
+
+                # Update progress bar
+                pbar.update(batch_idx)
+
+        pbar.add(1)
 
         # Compute the bleu score
         bleu_score = self._compute_bleu(predictions, targets)
