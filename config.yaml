@@ -80,10 +80,12 @@ trainer:
   exp_dir: null
   exp_name: ${name}
   test:
+    decoding_strategy: nucleus # Can be ['greedy', 'nucleus', 'beam']
     max_length: 100
-    top_p: 0.8
-    top_k: null
     temperature: 0.9
+    top_p: 0.8 # Only for nucleus sampling
+    top_k: null # Only for nucleus sampling
+    beam_width: 5 # Only for beam search
   checkpoint_callback_params:
     monitor: val_loss # Can be ['train_loss', 'val_loss']
     save_top_k: 5

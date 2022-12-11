@@ -142,7 +142,7 @@ def main(cfg):
         print('Training...')
         trainer.fit(train_loader, dev_loader, cfg.model.optimizer, cfg.trainer.epochs)  # type: ignore[reportUnboundVariable]
     else:
-        print('Testing...')
+        print(f'Testing with {cfg.trainer.test.decoding_strategy} decoding...')
         trainer.inference(test_loader, **cfg.trainer.test)  # type: ignore[reportUnboundVariable]
 
 
