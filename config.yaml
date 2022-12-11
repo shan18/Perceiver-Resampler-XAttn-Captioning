@@ -51,7 +51,7 @@ model:
 
     # scheduler setup
     scheduler:
-      name: CosineAnnealing
+      name: CosineAnnealing # Can be ['CosineAnnealing', 'Linear']
       warmup_steps: null
       warmup_ratio: 0.1
       min_lr: 1e-6
