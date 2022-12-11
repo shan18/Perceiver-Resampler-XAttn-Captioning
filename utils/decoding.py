@@ -8,7 +8,7 @@ def greedy_search(
     model,
     tokenizer,
     video_embeddings,
-    resampled_embeddings,
+    resampled_embeddings: Optional[torch.FloatTensor] = None,
     number_to_generate: int = 1,
     max_length: int = 100,
     temperature: float = 1.0,
@@ -62,7 +62,7 @@ def nucleus_sampling(
     model,
     tokenizer,
     video_embeddings,
-    resampled_embeddings,
+    resampled_embeddings: Optional[torch.FloatTensor] = None,
     number_to_generate: int = 1,
     max_length: int = 100,
     temperature: float = 1.0,
@@ -137,7 +137,7 @@ def beam_search(
     model,
     tokenizer,
     video_embeddings,
-    resampled_embeddings,
+    resampled_embeddings: Optional[torch.FloatTensor] = None,
     number_to_generate: int = 1,
     max_length: int = 100,
     temperature: float = 1.0,
@@ -184,7 +184,8 @@ def beam_search(
                 if scores is None:
                     scores, next_tokens = logits.topk(beam_width, -1)
                     video_embeddings = video_embeddings.expand(beam_width, *video_embeddings.shape[1:])
-                    resampled_embeddings = resampled_embeddings.expand(beam_width, *resampled_embeddings.shape[1:])
+                    if resampled_embeddings is not None:
+                        resampled_embeddings = resampled_embeddings.expand(beam_width, *resampled_embeddings.shape[1:])
                     next_tokens = next_tokens.permute(1, 0)
                     scores = scores.squeeze(0)
                     if tokens is None:
@@ -210,7 +211,8 @@ def beam_search(
                     tokens = torch.cat((tokens, next_tokens), dim=1)
 
                     video_embeddings = video_embeddings[next_tokens_source]
-                    resampled_embeddings = resampled_embeddings[next_tokens_source]
+                    if resampled_embeddings is not None:
+                        resampled_embeddings = resampled_embeddings[next_tokens_source]
                     scores = scores_sum_average * seq_lengths
 
                     has_stopped = has_stopped[next_tokens_source]
@@ -235,8 +237,8 @@ def decode_output(
     model,
     tokenizer,
     video_embeddings,
-    resampled_embeddings,
-    decoding_strategy,
+    resampled_embeddings: Optional[torch.FloatTensor] = None,
+    decoding_strategy: str = 'greedy',
     number_to_generate: int = 1,
     max_length: int = 100,
     temperature: float = 1.0,
@@ -269,7 +271,7 @@ def decode_output(
             model,
             tokenizer,
             video_embeddings,
-            resampled_embeddings,
+            resampled_embeddings=resampled_embeddings,
             number_to_generate=number_to_generate,
             max_length=max_length,
             temperature=temperature,
@@ -279,7 +281,7 @@ def decode_output(
             model,
             tokenizer,
             video_embeddings,
-            resampled_embeddings,
+            resampled_embeddings=resampled_embeddings,
             number_to_generate=number_to_generate,
             max_length=max_length,
             temperature=temperature,
@@ -291,7 +293,7 @@ def decode_output(
             model,
             tokenizer,
             video_embeddings,
-            resampled_embeddings,
+            resampled_embeddings=resampled_embeddings,
             number_to_generate=number_to_generate,
             max_length=max_length,
             temperature=temperature,
