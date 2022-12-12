@@ -61,6 +61,8 @@ dataset:
   # Can be ['zh', 'uk', 'ru', 'bg', 'is', 'de', 'it', 'sv', 'lt', 'en']
   sign_languages: ['en']
 
+  tokenizer: 'gpt2'
+
   train_ds:
     video_dir: ???
     json_path: ???

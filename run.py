@@ -70,7 +70,13 @@ def restore_cfg(cfg: DictConfig, checkpoint_path: str):
 
 
 def create_dataset(
-    video_dir: str, json_path: str, batch_size: int, num_workers: int, shuffle: bool, sign_languages: list = ['en']
+    video_dir: str,
+    json_path: str,
+    batch_size: int,
+    num_workers: int,
+    shuffle: bool,
+    sign_languages: list = ['en'],
+    tokenizer: str = 'gpt2',
 ):
     """Creates the dataset and its dataloaders
 
@@ -82,12 +88,13 @@ def create_dataset(
         shuffle: Whether to shuffle the dataset
         max_length: The maximum length of each sample in the dataset
         sign_languages: The list of sign languages to be used
+        tokenizer: Tokenizer for encoding and decoding the transcripts
 
     Returns:
         The MLSLTDataset dataset object and the data loader
     """
     print(f'Loading dataset from {video_dir} and {json_path}')
-    dataset = MLSLTDataset(video_dir, json_path, sign_languages=sign_languages)
+    dataset = MLSLTDataset(video_dir, json_path, sign_languages=sign_languages, tokenizer=tokenizer)
     loader = dataset.get_dataloader(batch_size, num_workers=num_workers, shuffle=shuffle)
     return dataset, loader
 
@@ -119,12 +126,23 @@ def main(cfg):
     # Create dataloaders
     print('Creating dataloaders...')
     if cfg.mode == 'train':
-        train_dataset, train_loader = create_dataset(**cfg.dataset.train_ds, sign_languages=cfg.dataset.sign_languages)
-        _, dev_loader = create_dataset(**cfg.dataset.validation_ds, sign_languages=cfg.dataset.sign_languages)
+        train_dataset, train_loader = create_dataset(
+            **cfg.dataset.train_ds, sign_languages=cfg.dataset.sign_languages, tokenizer=cfg.dataset.tokenizer
+        )
+        _, dev_loader = create_dataset(
+            **cfg.dataset.validation_ds, sign_languages=cfg.dataset.sign_languages, tokenizer=cfg.dataset.tokenizer
+        )
         tokenizer = train_dataset.tokenizer
         text_max_length = train_dataset.max_length
     else:
-        test_dataset, test_loader = create_dataset(**cfg.dataset.test_ds, batch_size=1, num_workers=1, shuffle=False, sign_languages=cfg.dataset.sign_languages)
+        test_dataset, test_loader = create_dataset(
+            **cfg.dataset.test_ds,
+            batch_size=1,
+            num_workers=1,
+            shuffle=False,
+            sign_languages=cfg.dataset.sign_languages,
+            tokenizer=cfg.dataset.tokenizer,
+        )
         tokenizer = test_dataset.tokenizer
         text_max_length = test_dataset.max_length
 
