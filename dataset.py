@@ -15,7 +15,7 @@ SUPPORTED_LANGUAGES = ['zh', 'uk', 'ru', 'bg', 'is', 'de', 'it', 'sv', 'lt', 'en
 
 
 class MLSLTDataset(Dataset):
-    def __init__(self, video_dir, json_path, sign_languages=['en']):
+    def __init__(self, video_dir, json_path, sign_languages=['en'], tokenizer='gpt2'):
         super().__init__()
 
         assert os.path.exists(video_dir), 'The videos directory does not exist.'
@@ -27,9 +27,14 @@ class MLSLTDataset(Dataset):
         self._get_samples(json_path)
 
         self.image_processor = CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')
+        self._prepare_tokenizer(tokenizer)
 
-        self.tokenizer = GPT2Tokenizer.from_pretrained('gpt2')
-        self.tokenizer.pad_token = '<|pad|>'
+    def _prepare_tokenizer(self, tokenizer):
+        if os.path.exists(tokenizer) and os.path.isfile(tokenizer):
+            self.tokenizer = Tokenizer(tokenizer)
+        else:
+            self.tokenizer = GPT2Tokenizer.from_pretrained(tokenizer)
+            self.tokenizer.pad_token = '<|pad|>'
 
     def _get_samples(self, json_path):
         """Reads the json file and create dataset samples."""
@@ -134,3 +139,10 @@ class MLSLTDataset(Dataset):
             num_workers=num_workers,
             collate_fn=self._collate_pad,
         )
+
+
+class Tokenizer:
+    """Wrapper class for the GPT2 tokenizer."""
+
+    def __init__(self):
+        pass
