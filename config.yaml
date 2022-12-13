@@ -61,7 +61,7 @@ dataset:
   # Can be ['zh', 'uk', 'ru', 'bg', 'is', 'de', 'it', 'sv', 'lt', 'en']
   sign_languages: ['en']
 
-  tokenizer: 'gpt2' #Can be [ 'gpt2', 'sp10_512_tokenizer.json', 'sp10_1024_tokenizer.json', 'sp10_2048_tokenizer.json']
+  tokenizer: 'gpt2' # Can be either 'gpt2' or path to a json tokenizer file
 
   train_ds:
     video_dir: ???
