@@ -118,11 +118,6 @@ def main(cfg):
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    # Build model
-    print('Creating model...')
-    model = build_model(model_cfg=cfg.model, pretrained_name=cfg.pretrained_name, device=device)
-    summary(model)
-
     # Create dataloaders
     print('Creating dataloaders...')
     if cfg.mode == 'train':
@@ -145,6 +140,16 @@ def main(cfg):
         )
         tokenizer = test_dataset.tokenizer
         text_max_length = test_dataset.max_length
+
+    # Build model
+    print('Creating model...')
+    model = build_model(
+        model_cfg=cfg.model,
+        pretrained_name=cfg.pretrained_name,
+        vocab_size=len(tokenizer) if hasattr(tokenizer, 'custom_tokenizer') else None,
+        device=device,
+    )
+    summary(model)
 
     # Create trainer
     print('Creating trainer...')
