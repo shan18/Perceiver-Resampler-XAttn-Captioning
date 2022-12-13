@@ -14,9 +14,10 @@ from transformers import CLIPProcessor, GPT2Tokenizer
 
 SUPPORTED_LANGUAGES = ['zh', 'uk', 'ru', 'bg', 'is', 'de', 'it', 'sv', 'lt', 'en']
 
+
 class MLSLTDataset(Dataset):
     def __init__(self, video_dir, json_path, sign_languages=['en'], tokenizer='gpt2'):
-        super().__init__()        
+        super().__init__()
         assert os.path.exists(video_dir), 'The videos directory does not exist.'
         for sign_lang in sign_languages:
             assert sign_lang in SUPPORTED_LANGUAGES, f'{sign_lang} sign language not supported.'
@@ -28,12 +29,12 @@ class MLSLTDataset(Dataset):
         self.image_processor = CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')
         self._prepare_tokenizer(tokenizer)
 
-    def _prepare_tokenizer(self, tokenizer):        
+    def _prepare_tokenizer(self, tokenizer):
         if os.path.exists(tokenizer) and os.path.isfile(tokenizer):
             self.tokenizer = CustomTokenizer(tokenizer)
         else:
-           self.tokenizer = GPT2Tokenizer.from_pretrained(tokenizer)
-           self.tokenizer.pad_token = '<|pad|>'
+            self.tokenizer = GPT2Tokenizer.from_pretrained(tokenizer)
+            self.tokenizer.pad_token = '<|pad|>'
 
     def _get_samples(self, json_path):
         """Reads the json file and create dataset samples."""
@@ -118,6 +119,7 @@ class MLSLTDataset(Dataset):
             pad_video_length.append(video_length)
             pad_video_path.append(video_path)
 
+            # Pad tokens
             pad_tokens.append(tokens)
             pad_tokens_mask.append(tokens_mask)
 
@@ -138,41 +140,50 @@ class MLSLTDataset(Dataset):
             collate_fn=self._collate_pad,
         )
 
-#file_path = '/scratch/sca321/cvproject/Multilingual-Sign-Language-Translation/data/sp10_512_tokenizer.json'
-class CustomTokenizer:
-    """Wrapper class for the our own tokenizer."""
 
-    def __init__(self, file_path):                
-        self._tokenizer = Tokenizer.from_file(file_path) 
-        self.eos_token = "<|endoftext|>" 
+class CustomTokenizer:
+    """Wrapper class for the custom tokenizer."""
+
+    def __init__(self, file_path):
+        self._tokenizer = Tokenizer.from_file(file_path)
+        self.eos_token = "<|endoftext|>"
         self.bos_token = "<|startoftext|>"
         self.pad_token = "<|pad|>"
-        self.eos_token_id = self._tokenizer.token_to_id(self.eos_token) 
-        self.bos_token_id = self._tokenizer.token_to_id(self.bos_token) 
-        self.pad_token_id = self._tokenizer.token_to_id(self.pad_token) 
- 
+        self.eos_token_id = self._tokenizer.token_to_id(self.eos_token)
+        self.bos_token_id = self._tokenizer.token_to_id(self.bos_token)
+        self.pad_token_id = self._tokenizer.token_to_id(self.pad_token)
+
     def batch_decode(self, sequences, skip_special_tokens=True):
-        return [
-            self._tokenizer.decode(list(seq), skip_special_tokens=skip_special_tokens)
-            for seq in sequences
-        ]
-    
+        return [self.decode(seq, skip_special_tokens=skip_special_tokens) for seq in sequences]
+
     def decode(self, sequence, skip_special_tokens=True):
         return self._tokenizer.decode(list(sequence), skip_special_tokens=skip_special_tokens)
-    
+
     def __call__(self, sequence, max_length=None, truncation=False, padding=None, return_tensors=None):
         tokenized_seq = self._tokenizer.encode(sequence)
         tokenized_seq_ids = torch.tensor(tokenized_seq.ids)
         tokenized_seq_attn = torch.tensor(tokenized_seq.attention_mask)
-        if padding!= None and max_length!= None:
+
+        # Truncate the long sequences
+        if truncation and max_length is not None:
+            tokenized_seq_ids = tokenized_seq_ids[:max_length]
+            tokenized_seq_attn = tokenized_seq_attn[:max_length]
+
+        # Pad the short sequences
+        if padding == 'max_length' and max_length is not None:
             tokenized_seq_ids = torch.cat(
-                    (tokenized_seq_ids, torch.zeros(max_length - len(tokenized_seq_ids), dtype=tokenized_seq_ids.dtype)), dim=0
-                )
+                (tokenized_seq_ids, torch.zeros(max_length - len(tokenized_seq_ids), dtype=tokenized_seq_ids.dtype)),
+                dim=0,
+            )
             tokenized_seq_attn = torch.cat(
-                    (tokenized_seq_attn, torch.zeros(max_length - len(tokenized_seq_attn), dtype=tokenized_seq_attn.dtype)), dim=0
-                )            
+                (
+                    tokenized_seq_attn,
+                    torch.zeros(max_length - len(tokenized_seq_attn), dtype=tokenized_seq_attn.dtype),
+                ),
+                dim=0,
+            )
+
         return {
             'input_ids': tokenized_seq_ids,
             'attention_mask': tokenized_seq_attn,
         }
-
