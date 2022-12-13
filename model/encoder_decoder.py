@@ -76,9 +76,11 @@ class TextGenerator(nn.Module):
         ff_mult: Optional[int] = None,
         activation: Optional[str] = None,
         freq: Optional[int] = None,
+        vocab_size: Optional[int] = None,
     ):
         super().__init__()
         self.enable_gated_xattn = dim_visual is not None
+        self.is_vocab_size_updated = vocab_size is not None
         if self.enable_gated_xattn:
             self.dim_visual = dim_visual
             self.dim_head = dim_head
@@ -89,6 +91,11 @@ class TextGenerator(nn.Module):
             self.freq = freq
 
         self.lm = GPT2LMHeadModel.from_pretrained(pretrained_name)
+
+        if self.is_vocab_size_updated:
+            self.lm.resize_token_embeddings(vocab_size)
+            trainable_lm_head = True
+
         self._update_trainable_state(trainable, trainable_lm_head)
 
         # Add the gated cross attention layers
@@ -99,6 +106,11 @@ class TextGenerator(nn.Module):
         # Update the trainable state of the LM
         for param in self.parameters():
             param.requires_grad = trainable
+
+        # Update the trainable state of the position embeddings
+        if self.is_vocab_size_updated:
+            for param in self.lm.transformer.wte.parameters():
+                param.requires_grad = trainable_lm_head
 
         # Update the trainable state of the LM head
         for param in self.lm.lm_head.parameters():
@@ -287,7 +299,8 @@ class VideoTextModel(nn.Module):
             text_generator_cfg.pretrained_name,
             text_generator_cfg.trainable,
             text_generator_cfg.trainable_lm_head,
-            **xattn_kwargs
+            **xattn_kwargs,
+            vocab_size=text_generator_cfg.vocab_size if 'vocab_size' in text_generator_cfg else None,
         )
 
     def _create_video_mask(self, video_length):
