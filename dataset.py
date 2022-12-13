@@ -152,6 +152,10 @@ class CustomTokenizer:
         self.eos_token_id = self._tokenizer.token_to_id(self.eos_token)
         self.bos_token_id = self._tokenizer.token_to_id(self.bos_token)
         self.pad_token_id = self._tokenizer.token_to_id(self.pad_token)
+        self.custom_tokenizer = True
+
+    def __len__(self):
+        return self._tokenizer.get_vocab_size()
 
     def batch_decode(self, sequences, skip_special_tokens=True):
         return [self.decode(seq, skip_special_tokens=skip_special_tokens) for seq in sequences]
