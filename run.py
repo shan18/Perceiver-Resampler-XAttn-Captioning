@@ -93,7 +93,7 @@ def create_dataset(
     Returns:
         The MLSLTDataset dataset object and the data loader
     """
-    print(f'Loading dataset from {video_dir} and {json_path}')
+    print(f'Loading dataset from {video_dir} and {json_path}')    
     dataset = MLSLTDataset(video_dir, json_path, sign_languages=sign_languages, tokenizer=tokenizer)
     loader = dataset.get_dataloader(batch_size, num_workers=num_workers, shuffle=shuffle)
     return dataset, loader
