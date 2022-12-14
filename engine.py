@@ -130,14 +130,21 @@ class Trainer:
     def train(self, loader):
         self.model.train()
         pbar = ProgressBar(target=len(loader), width=8)
-        for batch_idx, (video, video_length, tokens, tokens_mask, _) in enumerate(loader):
-            video = video.to(self.device)
-            video_length = video_length.to(self.device)
+        for batch_idx, (sample, sample_length, tokens, tokens_mask, _) in enumerate(loader):
+            sample = sample.to(self.device)
+            sample_length = sample_length.to(self.device)
             tokens = tokens.to(self.device)
             tokens_mask = tokens_mask.to(self.device)
 
+            # If there are multipler targets per sample, randomly select one
+            if tokens.dim() == 3:
+                token_batch_idxs = torch.arange(tokens.shape[0]).to(self.device)
+                token_idxs = torch.randint(0, tokens.shape[1], (tokens.shape[0],)).to(self.device)
+                tokens = tokens[token_batch_idxs, token_idxs]
+                tokens_mask = tokens_mask[token_batch_idxs, token_idxs]
+
             self.optimizer.zero_grad()
-            outputs = self.model(video, video_length, tokens=tokens, tokens_mask=tokens_mask)
+            outputs = self.model(sample, sample_length, tokens=tokens, tokens_mask=tokens_mask)
 
             # Compute the loss
             outputs = rearrange(outputs, 'b t d -> b d t')
@@ -168,7 +175,10 @@ class Trainer:
             pred = pred.strip()
             if pred != '':
                 valid_predictions.append(pred)
-                valid_targets.append([target])
+                if isinstance(target, list):
+                    valid_targets.append([x.strip() for x in target])
+                else:
+                    valid_targets.append([target.strip()])
 
         bleu1, bleu4, rouge = 0, 0, 0
         if len(valid_predictions) > 0:
@@ -193,14 +203,21 @@ class Trainer:
 
         eval_loss = 0
         with torch.no_grad():
-            for video, video_lengths, tokens, tokens_mask, _ in loader:
-                video = video.to(self.device)
-                video_lengths = video_lengths.to(self.device)
+            for sample, sample_lengths, tokens, tokens_mask, _ in loader:
+                sample = sample.to(self.device)
+                sample_lengths = sample_lengths.to(self.device)
                 tokens = tokens.to(self.device)
                 tokens_mask = tokens_mask.to(self.device)
 
+                # If there are multipler targets per sample, randomly select one
+                if tokens.dim() == 3:
+                    token_batch_idxs = torch.arange(tokens.shape[0]).to(self.device)
+                    token_idxs = torch.randint(0, tokens.shape[1], (tokens.shape[0],)).to(self.device)
+                    tokens = tokens[token_batch_idxs, token_idxs]
+                    tokens_mask = tokens_mask[token_batch_idxs, token_idxs]
+
                 # Get predictions
-                outputs = self.model(video, video_lengths, tokens=tokens, tokens_mask=tokens_mask)
+                outputs = self.model(sample, sample_lengths, tokens=tokens, tokens_mask=tokens_mask)
 
                 # Compute the loss
                 outputs = rearrange(outputs, 'b t d -> b d t')
@@ -233,24 +250,24 @@ class Trainer:
         self.model.eval()
 
         test_loss = 0
-        predictions, targets, video_paths = [], [], []
+        predictions, targets, sample_paths = [], [], []
         pbar = ProgressBar(target=len(loader), width=8)
 
         with torch.no_grad():
-            for batch_idx, (video, video_lengths, tokens, tokens_mask, video_path) in enumerate(loader):
-                video = video.to(self.device)
-                video_lengths = video_lengths.to(self.device)
+            for batch_idx, (sample, sample_lengths, tokens, tokens_mask, sample_path) in enumerate(loader):
+                sample = sample.to(self.device)
+                sample_lengths = sample_lengths.to(self.device)
                 tokens = tokens.to(self.device)
                 tokens_mask = tokens_mask.to(self.device)
 
-                # Encode video
-                video_embeddings, resampled_embeddings, _ = self.model.encode_video(video, video_lengths)
+                # Encode sample
+                sample_embeddings, resampled_embeddings, _ = self.model.encode_visual(sample, sample_lengths)
 
                 # Get predictions
                 decoded_prediction = decode_output(
                     self.model,
                     self.tokenizer,
-                    video_embeddings,
+                    sample_embeddings,
                     resampled_embeddings=resampled_embeddings,
                     decoding_strategy=decoding_strategy,
                     max_length=max_length,
@@ -261,11 +278,13 @@ class Trainer:
                 )
 
                 predictions.extend(decoded_prediction)
-                tokens[
-                    tokens_mask == 0
-                ] = self.tokenizer.pad_token_id  # This is done to make tokenizer ignore the pad tokens
-                targets.extend([x.strip() for x in self.tokenizer.batch_decode(tokens, skip_special_tokens=True)])
-                video_paths.extend(video_path)
+                tokens[tokens_mask == 0] = self.tokenizer.pad_token_id  # This is done to make tokenizer ignore the pad tokens
+                decoded_tokens = self.tokenizer.batch_decode(tokens if tokens.dim() == 2 else tokens.squeeze(0), skip_special_tokens=True)
+                if tokens.dim() == 3:
+                    targets.append(decoded_tokens)
+                else:
+                    targets.extend(decoded_tokens)
+                sample_paths.extend(sample_path)
 
                 # Update progress bar
                 pbar.update(batch_idx)
@@ -284,11 +303,11 @@ class Trainer:
 
         results = [
             {
-                'video_path': video_paths[i],
+                'sample_path': sample_paths[i],
                 'prediction': predictions[i],
                 'target': targets[i],
             }
-            for i in range(len(video_paths))
+            for i in range(len(sample_paths))
         ]
 
         with open(os.path.join(self.log_dir, f'inference.json'), 'w') as f:

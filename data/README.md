@@ -1,8 +1,8 @@
-This directory contains the dataset videos and the json files.
+This directory contains the dataset videos or images and the json files.
 
-### Directory Structure
+### MLSLT Directory Structure
 
-The data should have the following structure
+The MLSLT data should have the following structure
 
 ```
 data

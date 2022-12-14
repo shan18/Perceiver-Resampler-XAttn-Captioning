@@ -7,12 +7,104 @@ import os
 import random
 
 import torch
+from PIL import Image
 from tokenizers import Tokenizer
 from torch.utils.data import DataLoader, Dataset
 from torchvision.io import read_video
 from transformers import CLIPProcessor, GPT2Tokenizer
 
 SUPPORTED_LANGUAGES = ['zh', 'uk', 'ru', 'bg', 'is', 'de', 'it', 'sv', 'lt', 'en']
+
+
+class COCODataset(Dataset):
+    def __init__(self, image_dir, json_path, tokenizer='gpt2'):
+        super().__init__()
+        assert os.path.exists(image_dir), 'The images directory does not exist.'
+
+        self.image_dir = image_dir
+        self._get_samples(json_path)
+
+        self.image_processor = CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')
+        self._prepare_tokenizer(tokenizer)
+
+    def _prepare_tokenizer(self, tokenizer):
+        if os.path.exists(tokenizer) and os.path.isfile(tokenizer):
+            self.tokenizer = CustomTokenizer(tokenizer)
+        else:
+            self.tokenizer = GPT2Tokenizer.from_pretrained(tokenizer)
+            self.tokenizer.pad_token = '<|pad|>'
+
+    def _get_samples(self, json_path):
+        """Reads the json file and create dataset samples."""
+        with open(json_path) as f:
+            metadata = json.load(f)
+
+        # Get image samples
+        self.images = []
+        for image_data in metadata['images']:
+            self.images.append(
+                {
+                    'id': image_data['id'],
+                    'file_name': image_data['file_name'],
+                }
+            )
+
+        # Get captions
+        self.captions = {}
+        for caption_data in metadata['annotations']:
+            if caption_data['image_id'] not in self.captions:
+                self.captions[caption_data['image_id']] = []
+            if len(self.captions[caption_data['image_id']]) < 5:
+                self.captions[caption_data['image_id']].append(caption_data['caption'])
+
+        random.shuffle(self.images)
+
+        self.max_length = 260
+
+    def __len__(self):
+        return len(self.images)
+
+    def _process_image(self, image_path):
+        image = self.image_processor(images=[Image.open(image_path)], return_tensors='pt')['pixel_values']
+        return image, torch.tensor([1]).squeeze()
+
+    def _process_text(self, texts):
+        # Convert the text to tokens
+        tokenized_text = self.tokenizer(
+            [f'{self.tokenizer.bos_token} ' + text + f' {self.tokenizer.eos_token}' for text in texts],
+            max_length=self.max_length,
+            truncation=True,
+            padding='max_length',
+            return_tensors='pt',
+        )
+        tokens = tokenized_text['input_ids'].squeeze(0)
+        attention_mask = tokenized_text['attention_mask'].squeeze(0)
+
+        # Set padding to zero
+        tokens[attention_mask == 0] = 0
+
+        return tokens, attention_mask
+
+    def __getitem__(self, index):
+        sample_id = self.images[index]['id']
+        image_path = os.path.join(self.image_dir, self.images[index]['file_name'])
+
+        # Process video
+        image, image_length = self._process_image(image_path)
+
+        # Process text
+        tokens, tokens_mask = self._process_text(self.captions[sample_id])
+
+        # NOTE: We return video path because it's required to store results during evaluation
+        return image, image_length, tokens, tokens_mask, image_path
+
+    def get_dataloader(self, batch_size, num_workers=1, shuffle=True):
+        return DataLoader(
+            self,
+            batch_size=batch_size,
+            shuffle=shuffle,
+            num_workers=num_workers,
+        )
 
 
 class MLSLTDataset(Dataset):

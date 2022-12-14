@@ -13,9 +13,9 @@ HYDRA_FULL_ERROR=1 python run.py \
     --config-name=config.yaml \
     name=<name of the experiment> \
     mode=train \
-    dataset.train_ds.video_dir=<Directory containing the videos for train set> \
+    dataset.train_ds.visual_dir=<Directory containing the videos or images for train set> \
     dataset.train_ds.json_path=<Path to the json file with the transcripts for train set> \
-    dataset.validation_ds.video_dir=<Directory containing the videos for validation set> \
+    dataset.validation_ds.visual_dir=<Directory containing the videos or images for validation set> \
     dataset.validation_ds.json_path=<Path to the json file with the transcripts for validation set> \
     trainer.exp_dir=<Directory to save the checkpoints and logs>
 
@@ -28,7 +28,7 @@ HYDRA_FULL_ERROR=1 python run.py \
     name=<name of the experiment> \
     mode=test \
     pretrained_name=<path to the checkpoint> \
-    dataset.test_ds.video_dir=<Directory containing the videos for test set> \
+    dataset.test_ds.visual_dir=<Directory containing the videos or images for test set> \
     dataset.test_ds.json_path=<Path to the json file with the transcripts for test set> \
     trainer.exp_dir=<Directory to save the logs>
 """
@@ -41,7 +41,7 @@ import torch
 from omegaconf import DictConfig, OmegaConf, open_dict
 from torchinfo import summary
 
-from dataset import MLSLTDataset
+from dataset import COCODataset, MLSLTDataset
 from engine import Trainer
 from model import build_model
 
@@ -77,7 +77,8 @@ def restore_cfg(cfg: DictConfig, checkpoint_path: str):
 
 
 def create_dataset(
-    video_dir: str,
+    name: str,
+    visual_dir: str,
     json_path: str,
     batch_size: int,
     num_workers: int,
@@ -88,7 +89,8 @@ def create_dataset(
     """Creates the dataset and its dataloaders
 
     Args:
-        video_dir: The directory containing the videos
+        name: Dataset name. Can be 'mlslt' or 'coco'
+        visual_dir: The directory containing the videos
         json_path: Path to the json file with the transcripts
         batch_size: The batch size of the dataloader
         num_workers: The number of workers for the dataloader
@@ -100,8 +102,11 @@ def create_dataset(
     Returns:
         The MLSLTDataset dataset object and the data loader
     """
-    print(f'Loading dataset from {video_dir} and {json_path}')
-    dataset = MLSLTDataset(video_dir, json_path, sign_languages=sign_languages, tokenizer=tokenizer)
+    print(f'Loading dataset from {visual_dir} and {json_path}')
+    if name == 'mlslt':
+        dataset = MLSLTDataset(visual_dir, json_path, sign_languages=sign_languages, tokenizer=tokenizer)
+    else:
+        dataset = COCODataset(visual_dir, json_path, tokenizer=tokenizer)
     loader = dataset.get_dataloader(batch_size, num_workers=num_workers, shuffle=shuffle)
     return dataset, loader
 
@@ -134,15 +139,16 @@ def main(cfg):
     print('Creating dataloaders...')
     if cfg.mode == 'train':
         train_dataset, train_loader = create_dataset(
-            **cfg.dataset.train_ds, sign_languages=cfg.dataset.sign_languages, tokenizer=cfg.dataset.tokenizer
+            cfg.dataset.name, **cfg.dataset.train_ds, sign_languages=cfg.dataset.sign_languages, tokenizer=cfg.dataset.tokenizer
         )
         _, dev_loader = create_dataset(
-            **cfg.dataset.validation_ds, sign_languages=cfg.dataset.sign_languages, tokenizer=cfg.dataset.tokenizer
+            cfg.dataset.name, **cfg.dataset.validation_ds, sign_languages=cfg.dataset.sign_languages, tokenizer=cfg.dataset.tokenizer
         )
         tokenizer = train_dataset.tokenizer
         text_max_length = train_dataset.max_length
     else:
         test_dataset, test_loader = create_dataset(
+            cfg.dataset.name,
             **cfg.dataset.test_ds,
             batch_size=1,
             num_workers=1,

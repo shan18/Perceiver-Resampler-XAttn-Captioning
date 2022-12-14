@@ -13,6 +13,7 @@ shell.py
 slurm/
 exp_logs/
 config_local.yaml
+config_coco_local.yaml
 logs/
 *.zip
 data/mscoco/

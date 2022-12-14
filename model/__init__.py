@@ -5,7 +5,7 @@ from typing import Optional
 import torch
 from omegaconf import DictConfig, open_dict
 
-from .encoder_decoder import VideoTextModel
+from .encoder_decoder import VisualTextModel
 
 
 def build_model(
@@ -35,7 +35,7 @@ def build_model(
         with open_dict(model_cfg.text):
             model_cfg.text.vocab_size = vocab_size
 
-    model = VideoTextModel(
+    model = VisualTextModel(
         vision_encoder_cfg=model_cfg.vision,
         text_generator_cfg=model_cfg.text,
         mapper_cfg=model_cfg.mapper if model_cfg.enable_mapper else None,

@@ -261,7 +261,7 @@ class Mapper(nn.Module):
         return out  # type: ignore[reportUnboundVariable]
 
 
-class VideoTextModel(nn.Module):
+class VisualTextModel(nn.Module):
     """Model to encode the video frames and generate the text.
 
     Args:
@@ -309,7 +309,7 @@ class VideoTextModel(nn.Module):
             vocab_size=text_generator_cfg.vocab_size if 'vocab_size' in text_generator_cfg else None,
         )
 
-    def _create_video_mask(self, video_length):
+    def _create_visual_mask(self, video_length):
         """Create a mask for the video embeddings.
 
         Args:
@@ -325,7 +325,7 @@ class VideoTextModel(nn.Module):
         ) < video_length.unsqueeze(1)
         return mask
 
-    def encode_video(self, video, video_length):
+    def encode_visual(self, video, video_length):
         """Encode the video frames.
 
         Args:
@@ -336,7 +336,7 @@ class VideoTextModel(nn.Module):
             Encoded video embeddings passed through the mapper and the resampler
         """
         # Encode video
-        video_mask = self._create_video_mask(video_length)
+        video_mask = self._create_visual_mask(video_length)
         video_embeddings = self.vision_encoder(video, mask=video_mask)
 
         # Pass the video embeddings through the mapper
@@ -353,7 +353,7 @@ class VideoTextModel(nn.Module):
 
     def forward(self, video, video_length, tokens=None, tokens_mask=None):
         # Encode video
-        video_embeddings_mapped, resampled_embeddings, video_mask = self.encode_video(video, video_length)
+        video_embeddings_mapped, resampled_embeddings, video_mask = self.encode_visual(video, video_length)
 
         # Generate text
         text_mask = torch.cat((video_mask.float(), tokens_mask), dim=1)
