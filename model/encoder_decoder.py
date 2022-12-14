@@ -213,6 +213,7 @@ class Mapper(nn.Module):
         depth: int,
         heads: int,
         dim_feedforward: int,
+        mlp_dim: int,
         num_features: Optional[int] = None,
         trainable: Optional[bool] = True,
     ):
@@ -228,9 +229,9 @@ class Mapper(nn.Module):
         elif mapper_type == 'mlp':
             assert num_features is not None, 'num_features must be specified for mlp mapper'
             self._mapper = nn.Sequential(
-                nn.Linear(embedding_dim, 512),
+                nn.Linear(embedding_dim, mlp_dim),
                 nn.Tanh(),
-                nn.Linear(512, embedding_dim),
+                nn.Linear(mlp_dim, embedding_dim),
             )
 
         self._update_trainable_state(trainable)
