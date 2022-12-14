@@ -212,6 +212,7 @@ class Mapper(nn.Module):
         embedding_dim: int,
         depth: int,
         heads: int,
+        dim_feedforward: int,
         num_features: Optional[int] = None,
         trainable: Optional[bool] = True,
     ):
@@ -221,7 +222,7 @@ class Mapper(nn.Module):
 
         if mapper_type == 'transformer':
             self._mapper = nn.TransformerEncoder(
-                nn.TransformerEncoderLayer(embedding_dim, heads, dim_feedforward=2048, batch_first=True),
+                nn.TransformerEncoderLayer(embedding_dim, heads, dim_feedforward=dim_feedforward, batch_first=True),
                 num_layers=depth,
             )
         elif mapper_type == 'mlp':
