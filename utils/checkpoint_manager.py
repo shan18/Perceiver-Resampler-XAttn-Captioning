@@ -91,6 +91,10 @@ class CheckpointManager:
 
         torch.save(state_dict, path)
 
+    def save_current_state(self, epoch):
+        path = os.path.join(self.checkpoint_dir, f'{self.exp_name}-last.pt')
+        self.save_state(epoch, path)
+
     def save_best_state(self):
         assert len(self.recent_checkpoints) > 0, 'No checkpoints found'
         shutil.copy(self.recent_checkpoints[-1], os.path.join(self.checkpoint_dir, f'{self.exp_name}.pt'))

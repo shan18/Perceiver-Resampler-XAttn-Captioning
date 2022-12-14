@@ -313,5 +313,8 @@ class Trainer:
             # Log the progress
             self.ckpt_manager.log(epoch, train_loss, eval_loss)
 
+        # Store the last checkpoint weigths
+        self.ckpt_manager.save_current_state()
+
         # Store the best checkpoint with the the experiment name
         self.ckpt_manager.save_best_state()
