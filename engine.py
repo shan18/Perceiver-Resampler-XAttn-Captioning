@@ -301,6 +301,7 @@ class Trainer:
         dev_loader: DataLoader,
         optimizer_cfg: DictConfig,
         epochs: int,
+        check_val_every_n_epoch: int = 1,
         restore_ckpt: Optional[str] = None,
     ):
         start_epoch = self._prepare_for_training(optimizer_cfg, len(train_loader), epochs, restore_ckpt=restore_ckpt)
@@ -308,10 +309,10 @@ class Trainer:
         for epoch in range(start_epoch, epochs + 1):
             print(f'\nEpoch {epoch}:')
             train_loss = self.train(train_loader)
-            eval_loss = self.evaluate(dev_loader)
 
-            # Log the progress
-            self.ckpt_manager.log(epoch, train_loss, eval_loss)
+            if epoch % check_val_every_n_epoch == 0:
+                eval_loss = self.evaluate(dev_loader)
+                self.ckpt_manager.log(epoch, train_loss, eval_loss)  # Log the progress
 
         # Store the last checkpoint weigths
         self.ckpt_manager.save_current_state()

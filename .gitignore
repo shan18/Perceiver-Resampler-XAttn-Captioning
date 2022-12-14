@@ -14,3 +14,5 @@ slurm/
 exp_logs/
 config_local.yaml
 logs/
+*.zip
+data/mscoco/

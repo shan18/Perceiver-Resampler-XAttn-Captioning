@@ -5,6 +5,7 @@ name: mlslt
 mode: train # train or test
 
 pretrained_name: null # path to checkpoint. Mandatory for test mode.
+resume_pretrained_state: false # Restore the optimizer and dataset configuration from the checkpoint. Used only when pretrained_name is given and mode is train.
 
 model:
   enable_mapper: true # Enable the mapper module
@@ -86,6 +87,7 @@ trainer:
   epochs: 40
   exp_dir: null
   exp_name: ${name}
+  check_val_every_n_epoch: 1 # Check validation every n epochs
   test:
     decoding_strategy: beam # Can be ['greedy', 'nucleus', 'beam']
     max_length: 100

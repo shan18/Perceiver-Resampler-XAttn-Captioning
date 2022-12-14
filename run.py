@@ -70,9 +70,10 @@ def restore_cfg(cfg: DictConfig, checkpoint_path: str):
         cfg.model = model_cfg
 
     # Restore the tokenizer and languages info within model config
-    with open_dict(cfg.dataset):
-        cfg.dataset.tokenizer = model_cfg.tokenizer
-        cfg.dataset.sign_languages = model_cfg.sign_languages
+    if cfg.mode == 'test' or (cfg.mode == 'train' and cfg.resume_pretrained_state):
+        with open_dict(cfg.dataset):
+            cfg.dataset.tokenizer = model_cfg.tokenizer
+            cfg.dataset.sign_languages = model_cfg.sign_languages
 
 
 def create_dataset(
@@ -177,7 +178,14 @@ def main(cfg):
     # Train and evaluate
     if cfg.mode == 'train':
         print('Training...')
-        trainer.fit(train_loader, dev_loader, cfg.model.optimizer, cfg.trainer.epochs)  # type: ignore[reportUnboundVariable]
+        trainer.fit(
+            train_loader,  # type: ignore[reportUnboundVariable]
+            dev_loader,  # type: ignore[reportUnboundVariable]
+            cfg.model.optimizer,
+            cfg.trainer.epochs,
+            check_val_every_n_epoch=cfg.trainer.check_val_every_n_epoch,
+            restore_ckpt=cfg.pretrained_name if (cfg.pretrained_name is not None and cfg.resume_pretrained_state) else None
+        )
     else:
         print(f'Testing with {cfg.trainer.test.decoding_strategy} decoding...')
         trainer.inference(test_loader, **cfg.trainer.test)  # type: ignore[reportUnboundVariable]
