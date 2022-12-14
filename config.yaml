@@ -19,7 +19,7 @@ model:
     depth: 8 # Only for transformer
     heads: 8 # Only for transformer
     dim_feedforward: 2048 # Only for transformer
-    mlp_dim: 512
+    mlp_dim: 512 # Only for mlp
     trainable: true
 
   resampler:
