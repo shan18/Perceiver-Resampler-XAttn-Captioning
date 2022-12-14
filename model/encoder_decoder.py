@@ -193,6 +193,7 @@ class TextGenerator(nn.Module):
 
         return logits
 
+
 class Mapper(nn.Module):
     """Map video embeddings to text generator embeddings.
 
@@ -257,7 +258,8 @@ class Mapper(nn.Module):
             out = self._mapper(x)
             out = out * mask.unsqueeze(-1).float()
 
-        return out # type: ignore[reportUnboundVariable]
+        return out  # type: ignore[reportUnboundVariable]
+
 
 class VideoTextModel(nn.Module):
     """Model to encode the video frames and generate the text.
