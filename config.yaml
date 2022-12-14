@@ -95,7 +95,7 @@ trainer:
     beam_width: 5 # Only for beam search
   checkpoint_callback_params:
     monitor: val_loss # Can be ['train_loss', 'val_loss']
-    save_top_k: 5
+    save_top_k: 1
 
 hydra:
   run:

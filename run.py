@@ -64,9 +64,15 @@ def setup_log_dir(cfg: DictConfig):
 
 def restore_cfg(cfg: DictConfig, checkpoint_path: str):
     """Restores parts of config from the checkpoint."""
+    # Restore the model config
     with open_dict(cfg.model):
         model_cfg = torch.load(checkpoint_path, map_location='cpu')['model_cfg']
         cfg.model = model_cfg
+
+    # Restore the tokenizer and languages info within model config
+    with open_dict(cfg.dataset):
+        cfg.dataset.tokenizer = model_cfg.tokenizer
+        cfg.dataset.sign_languages = model_cfg.sign_languages
 
 
 def create_dataset(
@@ -113,6 +119,11 @@ def main(cfg):
     if cfg.pretrained_name is not None:
         print('Restoring config from checkpoint:', cfg.pretrained_name)
         restore_cfg(cfg, cfg.pretrained_name)
+    else:
+        # Save the tokenizer and languages info within model config
+        with open_dict(cfg.model):
+            cfg.model.tokenizer = cfg.dataset.tokenizer
+            cfg.model.sign_languages = cfg.dataset.sign_languages
 
     print(f'Hydra config:\n{OmegaConf.to_yaml(cfg)}')
 
