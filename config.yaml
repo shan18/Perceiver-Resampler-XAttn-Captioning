@@ -15,10 +15,10 @@ model:
     trainable: false
 
   mapper:
-    depth: 8
-    heads: 8
-    dim_feedforward: 2048
-    feature_avg_mode: mean # Can be ['mean', 'mlp']
+    mapper_type: 'mlp' # Can be ['mlp', 'transformer']
+    depth: 8 # Only for transformer
+    heads: 8 # Only for transformer
+    dim_feedforward: 2048 # Only for transformer
     trainable: true
 
   resampler:
