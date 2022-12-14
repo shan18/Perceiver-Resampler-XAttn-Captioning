@@ -193,8 +193,7 @@ class TextGenerator(nn.Module):
 
         return logits
 
-
-class TransformerMapper(nn.Module):
+class Mapper(nn.Module):
     """Map video embeddings to text generator embeddings.
 
     Args:
@@ -209,26 +208,29 @@ class TransformerMapper(nn.Module):
 
     def __init__(
         self,
+        mapper_type: str,
         embedding_dim: int,
         depth: int,
         heads: int,
-        dim_feedforward: int,
-        feature_avg_mode: Optional[str] = 'mean',
         num_features: Optional[int] = None,
         trainable: Optional[bool] = True,
     ):
         super().__init__()
-        assert feature_avg_mode in ['mean', 'mlp'], 'feature_avg_mode must be either mean or mlp'
-        self.feature_avg_mode = feature_avg_mode
+        assert mapper_type in ['transformer', 'mlp'], 'mapper_type must be either transformer or mlp'
+        self.mapper_type = mapper_type
 
-        self.transformer = nn.TransformerEncoder(
-            nn.TransformerEncoderLayer(embedding_dim, heads, dim_feedforward=dim_feedforward, batch_first=True),
-            num_layers=depth,
-        )
-
-        if feature_avg_mode == 'mlp':
-            assert num_features is not None, 'num_features is required for MLP feature averaging'
-            self.linear = nn.Linear(num_features * embedding_dim, embedding_dim)
+        if mapper_type == 'transformer':
+            self._mapper = nn.TransformerEncoder(
+                nn.TransformerEncoderLayer(embedding_dim, heads, dim_feedforward=2048, batch_first=True),
+                num_layers=depth,
+            )
+        elif mapper_type == 'mlp':
+            assert num_features is not None, 'num_features must be specified for mlp mapper'
+            self._mapper = nn.Sequential(
+                nn.Linear(embedding_dim, 512),
+                nn.Tanh(),
+                nn.Linear(512, embedding_dim),
+            )
 
         self._update_trainable_state(trainable)
 
@@ -245,15 +247,15 @@ class TransformerMapper(nn.Module):
         Returns:
             Mapped embeddings
         """
-        if self.feature_avg_mode == 'mean':
-            x = x.mean(dim=2)  # (batch_size, n_frames, 768)
-        elif self.feature_avg_mode == 'linear':
-            x = rearrange(x, 'b t n e -> b t (n e)')  # (batch_size, n_frames, 50 * 768)
-            x = self.linear(x)  # (batch_size, n_frames, 768)
+        x = x.mean(dim=2)  # (batch_size, n_frames, 768)
 
-        out = self.transformer(x, src_key_padding_mask=~mask)
-        return out
+        if self.mapper_type == 'transformer':
+            out = self._mapper(x, src_key_padding_mask=~mask)
+        elif self.mapper_type == 'mlp':
+            out = self._mapper(x)
+            out = out * mask.unsqueeze(-1).float()
 
+        return out # type: ignore[reportUnboundVariable]
 
 class VideoTextModel(nn.Module):
     """Model to encode the video frames and generate the text.
@@ -284,8 +286,8 @@ class VideoTextModel(nn.Module):
 
         # Build the mapper
         if self.enable_mapper:
-            self.mapper = TransformerMapper(
-                self.vision_encoder.dim, **mapper_cfg, num_features=self.vision_encoder.num_features
+            self.mapper = Mapper(
+                embedding_dim=self.vision_encoder.dim, **mapper_cfg, num_features=self.vision_encoder.num_features
             )
 
         # Build the resampler
