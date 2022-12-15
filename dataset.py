@@ -17,11 +17,11 @@ SUPPORTED_LANGUAGES = ['zh', 'uk', 'ru', 'bg', 'is', 'de', 'it', 'sv', 'lt', 'en
 
 
 class COCODataset(Dataset):
-    def __init__(self, image_dir, json_path, tokenizer='gpt2'):
+    def __init__(self, visual_dir, json_path, tokenizer='gpt2'):
         super().__init__()
-        assert os.path.exists(image_dir), 'The images directory does not exist.'
+        assert os.path.exists(visual_dir), 'The images directory does not exist.'
 
-        self.image_dir = image_dir
+        self.visual_dir = visual_dir
         self._get_samples(json_path)
 
         self.image_processor = CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')
@@ -87,7 +87,7 @@ class COCODataset(Dataset):
 
     def __getitem__(self, index):
         sample_id = self.images[index]['id']
-        image_path = os.path.join(self.image_dir, self.images[index]['file_name'])
+        image_path = os.path.join(self.visual_dir, self.images[index]['file_name'])
 
         # Process video
         image, image_length = self._process_image(image_path)
@@ -108,14 +108,14 @@ class COCODataset(Dataset):
 
 
 class MLSLTDataset(Dataset):
-    def __init__(self, video_dir, json_path, sign_languages=['en'], tokenizer='gpt2'):
+    def __init__(self, visual_dir, json_path, sign_languages=['en'], tokenizer='gpt2'):
         super().__init__()
-        assert os.path.exists(video_dir), 'The videos directory does not exist.'
+        assert os.path.exists(visual_dir), 'The videos directory does not exist.'
         for sign_lang in sign_languages:
             assert sign_lang in SUPPORTED_LANGUAGES, f'{sign_lang} sign language not supported.'
 
         self.sign_languages = sign_languages
-        self.video_dir = video_dir
+        self.visual_dir = visual_dir
         self._get_samples(json_path)
 
         self.image_processor = CLIPProcessor.from_pretrained('openai/clip-vit-base-patch32')
@@ -186,7 +186,7 @@ class MLSLTDataset(Dataset):
 
     def __getitem__(self, index):
         sample_id = self.videos[index]['id']
-        video_path = os.path.join(self.video_dir, str(sample_id), f'{self.videos[index]["lang"]}.mp4')
+        video_path = os.path.join(self.visual_dir, str(sample_id), f'{self.videos[index]["lang"]}.mp4')
         transcript = self.transcripts[sample_id]['en']
 
         # Process video
