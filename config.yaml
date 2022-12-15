@@ -96,7 +96,8 @@ trainer:
     temperature: 0.9
     top_p: 0.8 # Only for nucleus sampling
     top_k: null # Only for nucleus sampling
-    beam_width: 5 # Only for beam search
+    beam_width: 2 # Only for beam search
+    limit_batches: null # Limit the number of batches for testing
   checkpoint_callback_params:
     monitor: val_loss # Can be ['train_loss', 'val_loss']
     save_top_k: 1

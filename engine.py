@@ -1,5 +1,6 @@
 import json
 import os
+from itertools import islice
 from typing import Optional, Union
 
 import evaluate as hf_evaluate
@@ -237,6 +238,7 @@ class Trainer:
         top_p: Optional[float] = 0.8,
         top_k: Optional[int] = None,
         beam_width: Optional[int] = 5,
+        limit_batches: Optional[int] = None,
     ):
         """Test the model.
 
@@ -249,9 +251,14 @@ class Trainer:
         """
         self.model.eval()
 
+        if limit_batches is not None:
+            loader = islice(loader, limit_batches)
+        else:
+            limit_batches = len(loader)
+
         test_loss = 0
         predictions, targets, sample_paths = [], [], []
-        pbar = ProgressBar(target=len(loader), width=8)
+        pbar = ProgressBar(target=limit_batches, width=8)
 
         with torch.no_grad():
             for batch_idx, (sample, sample_lengths, tokens, tokens_mask, sample_path) in enumerate(loader):
@@ -334,7 +341,7 @@ class Trainer:
                 self.ckpt_manager.log(epoch, train_loss, eval_loss)  # Log the progress
 
         # Store the last checkpoint weigths
-        self.ckpt_manager.save_current_state()
+        self.ckpt_manager.save_current_state(epochs + 1)
 
         # Store the best checkpoint with the the experiment name
         self.ckpt_manager.save_best_state()
