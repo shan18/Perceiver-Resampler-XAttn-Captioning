@@ -67,6 +67,8 @@ def restore_cfg(cfg: DictConfig, checkpoint_path: str):
     # Restore the model config
     with open_dict(cfg.model):
         model_cfg = torch.load(checkpoint_path, map_location='cpu')['model_cfg']
+        if not cfg.resume_pretrained_state:
+            model_cfg.optimizer = cfg.model.optimizer
         cfg.model = model_cfg
 
     # Restore the tokenizer and languages info within model config
