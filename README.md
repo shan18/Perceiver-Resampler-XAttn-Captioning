@@ -1,4 +1,4 @@
-# Multilingual Sign Language Translation
+# Perceiver-Resampler-XAttn-Captioning
 
 ## Dependencies
 
