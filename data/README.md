@@ -2,7 +2,7 @@
 
 This directory should contain the dataset on which the model will be trained. The codebase uses json files to parse through the dataset and fetch the labels. The sections below list out the dataset setup instructions and the directory structure in which the COCO and the MLSLT dataset should be stored.
 
-NOTE: In the steps mentioned below, `$PROJ_ROOT_DIR` refers to the root directory of this repository i.e. if the repository was cloned at path `/some/path/Perceiver-Resampler-XAttn-Captioning` then this will be denoted by `$PROJ_ROOT_DIR`.
+*NOTE: In the steps mentioned below, `$PROJ_ROOT_DIR` refers to the root directory of this repository i.e. if the repository was cloned at path `/some/path/Perceiver-Resampler-XAttn-Captioning` then this will be denoted by `$PROJ_ROOT_DIR`.*
 
 ## MSCOCO
 

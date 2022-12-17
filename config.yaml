@@ -24,9 +24,9 @@ model:
     trainable: true
 
   resampler:
-    depth: 6
+    depth: 4
     dim_head: 64
-    heads: 8
+    heads: 6
     num_latents: 64
     num_time_embeds: 500
     ff_mult: 1
@@ -39,27 +39,27 @@ model:
     trainable_lm_head: false
     xattn:
       dim_head: 64
-      heads: 8
+      heads: 6
       num_latents: 64
       ff_mult: 1
       activation: gelu
-      freq: 4
+      freq: 1
 
   optimizer:
     name: adamw # Optimizer to use for training. Can be ['adamw', 'adam']
-    lr: 0.001
+    lr: 0.0001
     betas: [0.9, 0.98]
     weight_decay: 1e-3
 
     # scheduler setup
     scheduler:
-      name: CosineAnnealing # Can be ['CosineAnnealing', 'Linear']
+      name: Linear # Can be ['CosineAnnealing', 'Linear']
       warmup_steps: null
       warmup_ratio: 0.1
       min_lr: 1e-6
 
 dataset:
-  name: 'mlslt' # Can be ['mlslt', 'coco']
+  name: 'coco' # Can be ['mlslt', 'coco']
 
   # List of sign languages to use for training
   # Can be ['zh', 'uk', 'ru', 'bg', 'is', 'de', 'it', 'sv', 'lt', 'en']
@@ -70,15 +70,15 @@ dataset:
   train_ds:
     visual_dir: ???
     json_path: ???
-    batch_size: 16
-    num_workers: 4
+    batch_size: 32
+    num_workers: 8
     shuffle: true
 
   validation_ds:
     visual_dir: ???
     json_path: ???
-    batch_size: 16
-    num_workers: 4
+    batch_size: 32
+    num_workers: 8
     shuffle: true
 
   test_ds: # Mandatory for test mode
@@ -86,7 +86,7 @@ dataset:
     json_path: ???
 
 trainer:
-  epochs: 40
+  epochs: 30
   exp_dir: null
   exp_name: ${name}
   check_val_every_n_epoch: 1 # Check validation every n epochs
@@ -96,7 +96,7 @@ trainer:
     temperature: 0.9
     top_p: 0.8 # Only for nucleus sampling
     top_k: null # Only for nucleus sampling
-    beam_width: 2 # Only for beam search
+    beam_width: 5 # Only for beam search
     limit_batches: null # Limit the number of batches for testing
   checkpoint_callback_params:
     monitor: val_loss # Can be ['train_loss', 'val_loss']

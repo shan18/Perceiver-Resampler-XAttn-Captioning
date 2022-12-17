@@ -16,7 +16,7 @@ For instructions on how to download and setup the dataset, check the [README](da
 
 ## Training
 
-For training a model with the default set of parameters, run
+For training a model with the hyperparamters present in `config.yaml`, run
 
 ```
 $ python run.py \
@@ -31,9 +31,13 @@ $ python run.py \
     trainer.exp_dir=<Directory to save the checkpoints and logs>
 ```
 
-## Testing
+## Evaluation
 
-To evaluate a trained model on a test set, run
+After training, you can use the command below to evaluate your models.
+
+Don't feel like training a model yet? No worries, you can download a checkpoint that we trained using the default configuration present in `config.yaml` from [here](https://drive.google.com/file/d/11dYzjLq3nHtG0I_FP49YfztK0FOzbuca/view?usp=sharing).
+
+To evaluate on the test set, run
 
 ```
 HYDRA_FULL_ERROR=1 python run.py \
@@ -46,3 +50,5 @@ HYDRA_FULL_ERROR=1 python run.py \
     dataset.test_ds.json_path=<Path to the json file with the transcripts for test set> \
     trainer.exp_dir=<Directory to save the logs>
 ```
+
+*NOTE: The commands given above train or evaluate the model based on the default set of hyperparameters given in `config.yaml`. To tweak those values, please specify them explicitly via the command line.*
