@@ -35,6 +35,7 @@ The model with the perceiver-resampler network and the MLP mapper network enable
     alt="evaluation_results_table"
   />
 </div>
+<br />
 
 The **Mapping Network + Perceiver Resampler** model generates high quality descriptions of images in natural language. Some generated samples are shown below.
 
