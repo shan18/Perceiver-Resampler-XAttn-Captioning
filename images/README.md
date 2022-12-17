@@ -1,0 +1,1 @@
+This directory contains the images to be displayed on the project READMEs.
