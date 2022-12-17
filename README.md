@@ -8,6 +8,12 @@ Install all the project dependencies with
 $ python3 -m pip install -r requirements.txt
 ```
 
+## Dataset
+
+The training scripts and the model architecture can support can image-to-text and video-to-text tasks right out of the box. What needs to be changed is the dataset class in `dataset.py` to support your own dataset. However, the current codebase offers the code to create data loaders only for the MSCOCO and the MLSLT (Multiligual Sign-Language Translation) dataset.
+
+For instructions on how to download and setup the dataset, check the [README](data/README.md) in the `data/` directory.
+
 ## Training
 
 For training a model with the default set of parameters, run
