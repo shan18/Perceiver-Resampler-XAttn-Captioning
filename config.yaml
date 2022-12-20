@@ -1,5 +1,5 @@
-# Config to train the Multilingual-Sign-Language-Translation model on the SP-10 dataset.
-########################################################################################
+# Config to train the Perceiver-Resampler-XAttn-Captioning model on the MSCOCO dataset.
+#######################################################################################
 
 name: mlslt
 mode: train # train or test
